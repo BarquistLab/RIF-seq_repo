@@ -63,7 +63,7 @@ functions{
 }
 
 data{
-// number of conditions, samples, time points, genes, data points
+// number of conditions, samples, replicates (per condition/strain), time points, genes, data points
     int<lower=1> N_con;
     int<lower=1> N_s;
     int<lower=1> N_b[N_con];
