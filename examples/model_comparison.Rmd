@@ -554,11 +554,11 @@ legend <- cowplot::get_legend(
 )
 
 p <- cowplot::plot_grid(
-  cowplot::plot_grid(p_pred_lnm, p_pred_cdv, labels=c('A', 'B', 'C'), label_size=14, ncol=3, scale=0.95),
+  cowplot::plot_grid(p_pred_lnm, p_pred_cdv, labels=c('A', 'B'), label_size=14, ncol=2, scale=0.95),
   legend,
   ncol=1, rel_heights=c(0.5, 0.1), scale=1)
 print(p)
-cairo_pdf(paste(res_dir, "posterior_predictive.pdf", sep=""), width = 6.9, height = 2.4)
+cairo_pdf(paste(res_dir, "posterior_predictive.pdf", sep=""), width = 6, height = 2.4)
 print(p)
 dev.off()
 ```
@@ -583,22 +583,9 @@ p_loo <- stan_df %>% ggplot(aes(raw)) +
         legend.position="bottom", legend.box="vertical")
 print(p_loo)
 
-p_loo <- stan_df %>% ggplot(aes(raw)) +
-  geom_point(aes(y=elpd_nb, col=factor(time))) +
-  scale_color_manual(name="time", values=c(viridis(5)[1:4], "orange")) +
-  scale_alpha_continuous(name=expression(paste(t[1/2, WT], "/", CI["68%"]))) +
-  ylab("ELPD") +
-  scale_x_log10(name="raw count") +
-  theme(legend.title=element_text(face="bold"),
-        legend.text=element_text(size=8),
-        legend.key.width=unit(0.3,"cm"),legend.key.height=unit(0.3,"cm"),legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
-        legend.position="bottom", legend.box="vertical")
-print(p_loo)
-
 p_loo <- stan_df %>% ggplot(aes(condition)) +
   geom_violin(aes(y=elpd_lnm, col="LNM")) +
   geom_violin(aes(y=elpd_cdv, col="LNMcdv")) +
-  geom_violin(aes(y=elpd_nb, col="NB")) +
   scale_color_manual(name="model", values=c(viridis(3)[1:2], "orange")) +
   scale_alpha_continuous(name=expression(paste(t[1/2, WT], "/", CI["68%"]))) +
   ylab("ELPD") +
@@ -611,7 +598,6 @@ print(p_loo)
 p_loo_hist <- stan_df %>% ggplot() +
   geom_density(aes(x=elpd_lnm, fill="LNM")) +
   geom_density(aes(x=elpd_cdv, fill="LNMcdv")) +
-  geom_density(aes(x=elpd_nb, fill="NB")) +
   scale_fill_manual(name=expression(gamma>3.5), values=c(viridis(3)[1:2], "orange")) +
   scale_alpha_continuous(name=expression(paste(t[1/2, WT], "/", CI["68%"]))) +
   xlab("ELPD") +
@@ -623,13 +609,6 @@ print(p_loo_hist)
 
 plot(
   loo_lnm,
-  diagnostic = c("k", "n_eff"),
-  label_points = FALSE,
-  main = "PSIS diagnostic plot"
-)
-
-plot(
-  loo_nb,
   diagnostic = c("k", "n_eff"),
   label_points = FALSE,
   main = "PSIS diagnostic plot"
