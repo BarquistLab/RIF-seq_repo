@@ -1,0 +1,23 @@
+Package: RIF-seq
+Title: R Package for the analysis of HTS RNA-decay data with Stan
+Version: 0.0
+Authors@R: person("Laura", "Jenniches", email = "laura.jenniches@helmholtz-hiri.de",
+                  role = c("aut", "cre"))
+Description: Analyse NGS sequencing time-series data with
+    multivariate models using the statistical modeling language Stan. Stan models are in the
+    directory stan_models, a working example
+    can be found in the directory examples.
+Depends: R (>= 4.3.1)
+Encoding: UTF-8
+License: GPL-3
+LazyData: true
+Imports:
+    data.table,
+    dplyr,
+    ggplot2,
+    loo,
+    bayesplot,
+    rstan,
+    stringr
+RoxygenNote: 7.2.3
+URL: http://github.com/BarquistLab/RIF-seq_repo

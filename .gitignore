@@ -6,6 +6,7 @@
 *~
 *.log
 *Rproj*
+*.RDS
 *.rds
 *.rda
 *.txt
@@ -22,3 +23,12 @@
 *.sav
 *.stderr
 *.stdout
+figures/
+# executables of Stan models
+stan_models/LNM
+stan_models/LNM-1.0
+stan_models/LNM_horseshoe
+stan_models/LNMcdv-1.0
+stan_models/LNMsim
+stan_models/NB-1.0
+

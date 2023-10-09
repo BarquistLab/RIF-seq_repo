@@ -1,0 +1,637 @@
+---
+title: "Statistical model for scRNA-seq"
+author: "Laura Jenniches"
+date: "10/8/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+#
+```{r}
+knitr::opts_chunk$set(fig.path=paste0(getwd(),"/../figures/"), warning=F,
+                      message=F, echo=F, dev="cairo_pdf")
+```
+
+load R packages
+
+```{r}
+library(ggplot2)
+library(ggpubr)
+library(viridis)
+library(ggrastr)
+library(cowplot)
+
+library(tidyverse)
+library(data.table)
+
+library(cmdstanr)
+library(bayesplot)
+library(posterior)
+
+devtools::load_all("~/RNA-seq/proQ/RIF-seq_repo")
+
+theme_set(theme_bw(base_size = 10))
+```
+
+set and create data and results directories, load gene meta data
+
+```{r}
+# set result directory for plots etc.
+data_dir <- paste0(getwd(), "/../data/")
+res_dir <- paste0(getwd(), "/../figures/")
+if(!dir.exists(res_dir)) dir.create(res_dir)
+cb_palette <- c(viridis(9)[1:8], "orange")
+
+# load reads
+meta_data <- read.table(paste0(getwd(), "/../annotations/Salmonella_meta.csv"), quote="\"", stringsAsFactors=F, header=T, sep="\t")
+rownames(meta_data) <- meta_data$locus_tag
+```
+
+Read in example data (3 replicates of the first 50 genes, WT and ΔproQ only) and create long data.frame for Stan
+
+```{r}
+read_counts_in <- fread(paste0(data_dir, "proQ_RIF-seq_1-50.csv"), data.table=F)
+colnames(read_counts_in)[1] <- "locus_tag"
+
+# remove ProQ++ samples for example run
+read_counts_in <- read_counts_in[,-grep("proQp", colnames(read_counts_in))]
+
+stan_df <- read_counts_in[grep("^[Sn]",read_counts_in$locus_tag),] %>% pivot_longer(!locus_tag, names_to="sample", values_to="raw")
+sample_info <- strsplit(stan_df$sample, "_")
+stan_df$locus_tag <- stan_df$locus_tag %>% factor(levels=read_counts_in$locus_tag)
+
+# relevel stan_df$condition to the control condition.
+# Differences in decay rate will be given relative to the control.
+stan_df$condition <- sample_info %>% sapply(function(x) x[1]) %>% factor  %>% relevel(ref="WT")
+stan_df$time <- sample_info %>% sapply(function(x) sub("min", "", x[2])) %>% as.numeric()
+stan_df$replicate <- sample_info %>% sapply(function(x) sub("R", "", x[3])) %>% as.numeric()
+
+rownames(read_counts_in) <- read_counts_in$locus_tag
+read_counts_in <- read_counts_in[,-grep("locus_tag", colnames(read_counts_in))]
+
+stan_df$sample <- factor(stan_df$sample, levels=colnames(read_counts_in))
+```
+
+TMM Normalization with ERCC spike-ins
+
+```{r}
+proQ_ercc <- read_counts_in[grep("ERCC",rownames(read_counts_in)),]
+# remove ERCC spike-ins with zero counts if any
+remove_ercc <- which(apply(proQ_ercc, 1, prod)==0)
+if(length(remove_ercc)!=0) proQ_ercc <- proQ_ercc[-remove_ercc,]
+proQ_reads <- read_counts_in[grep("^[Sn]",rownames(read_counts_in)),]
+nf_proQ <- get_norm_facs(proQ_reads, proQ_ercc, count_min=0, sample_min=0)
+```
+
+```{r}
+stan_df$com_id <- meta_data$com_id[match(stan_df$locus_tag, meta_data$locus_tag)]
+stan_df$N_lib <- colSums(proQ_reads)[match(stan_df$sample, colnames(proQ_reads))]
+stan_df$n_f <- nf_proQ[match(stan_df$sample, colnames(proQ_reads))]
+stan_df <- stan_df %>% mutate(cpm=(raw+0.5)*1e6/(N_lib*n_f+1), logcpm=log((raw+0.5)*1e6/(N_lib*n_f+1)))
+stan_df_t0 <- subset(stan_df, time==0) %>% group_by(locus_tag, condition) %>% summarise(logcpm0=logcpm %>% mean)
+stan_df$logcpm0 <- stan_df_t0$logcpm0[match(paste0(stan_df$locus_tag, stan_df$condition), paste0(stan_df_t0$locus_tag, stan_df_t0$condition))]
+stan_df <- stan_df %>% mutate(logrel=logcpm - logcpm0)
+stan_df_tmp <- stan_df %>% group_by(locus_tag, condition, time) %>% summarise(logrel_avg=logrel %>% mean)
+stan_df$logrel_avg <- stan_df_tmp$logrel_avg[match(paste0(stan_df$locus_tag, stan_df$condition, stan_df$time), paste0(stan_df_tmp$locus_tag, stan_df_tmp$condition, stan_df_tmp$time))]
+stan_df_tmp <- stan_df %>% group_by(condition, time, replicate) %>% summarise(lognf2=mean(logrel-logrel_avg))
+stan_df$logrel2 <- stan_df$logrel - stan_df_tmp$lognf2[match(paste0(stan_df$time, stan_df$condition, stan_df$replicate), paste0(stan_df_tmp$time, stan_df$condition, stan_df_tmp$replicate))]
+```
+
+Verify that the center-mean normalization worked. Residuals of all replicates should be centered around 0.
+
+```{r}
+stan_df %>% subset(time==3) %>% ggplot(aes(logrel2-logrel_avg, col=(replicate %>% factor))) +
+  geom_density()
+```
+
+Variables for Stan
+
+```{r}
+it_c = stan_df$condition %>% as.numeric
+it_b = stan_df$replicate
+it_s = stan_df$sample %>% as.numeric
+it_g = stan_df$locus_tag %>% as.numeric
+it_t = stan_df$time %>% factor(levels=c("0", "3", "6", "12", "24")) %>% as.numeric
+
+N_g = unique(stan_df$locus_tag) %>% length
+it_gc = (it_c - 1)*N_g + it_g
+N_t = unique(stan_df$time) %>% length
+
+data_list <- list(
+  raw = stan_df$raw,
+  t = stan_df$time,
+  it_g = it_g,
+  it_c = it_c,
+  it_t = it_t,
+  it_b = it_b,
+  it_s = it_s,
+  
+  it_gc = it_gc,
+  it_gct = (it_gc - 1)*N_t + it_t,
+  it_gt = (it_g - 1)*N_t + it_t,
+  
+  N_con = max(it_c),
+  N_s = max(it_s),
+  N_b = stan_df %>% group_by(condition) %>% summarize(N_b=unique(it_b) %>% length) %>% pull(N_b),
+  N_t = N_t,
+  N_g = N_g,
+  N_tot = nrow(stan_df),
+  
+  # TMM normalization factors and library sizes
+  n_f = nf_proQ,
+  N_lib = colSums(proQ_reads),
+
+  # Remove batch effects by using center mean normalization (yes=1, no=0)
+  batch_effects = 1,
+  # Choose model:
+  # 1: LNM
+  # 2: LM
+  # 3: PLM
+  model_id = 1
+)
+```
+
+Run cmdstan. Alternatively, data can be exported with stan_rdump
+
+```{r}
+stan_file <- paste0(getwd(), "/../stan_models/LNM_loo-1.0.stan")
+mod <- cmdstan_model(stan_file, pedantic=F)
+
+json_file <- tempfile(fileext = ".json")
+write_stan_json(data_list, json_file)
+
+# fit model with cmdstan
+fit0 <- mod$sample(data = json_file, chains = 2, adapt_delta = 0.95, parallel_chains = 2, iter_warmup = 500, iter_sampling = 500, max_treedepth = 12)
+
+# save fitted model
+fit0$save_object(file = paste0(res_dir, "fit_LNM.RDS"))
+rm(fit0)
+cpu_time_LNM <- system.time(mod$sample(data = json_file, chains = 2, adapt_delta = 0.95, parallel_chains = 2, iter_warmup = 500, iter_sampling = 500, max_treedepth = 12))
+```
+
+Bayesian diagnostics
+
+```{r}
+# load fitted model
+fit0 <- readRDS(paste0(res_dir, "fit_LNM.RDS"))
+
+# use the bayesplot packages to check for divergent transitions and correlations between parameters
+# Pairs plots
+x <- fit0$draws()
+i <- "LNM_1"
+p <- mcmc_pairs(x, pars = paste0("delta_beta[", 1:10, "]"),
+           off_diag_args = list(size = 1, alpha = 0.5), np=nuts_params(fit0))
+print(p)
+cairo_pdf(paste(res_dir, "pairs_", i, ".pdf", sep=""), width = 20, height = 20)
+print(p)
+dev.off()
+png(paste(res_dir, "pairs_", i, ".png", sep=""), width = 1500, height = 1500)
+print(p)
+dev.off()
+i <- "LNM_2"
+p <- mcmc_pairs(x, pars = c("mu_beta", "beta_WT[1]", "delta_beta[1]", "sigma_g[1,1]"),
+           off_diag_args = list(size = 1, alpha = 0.5), np=nuts_params(fit0))
+print(p)
+cairo_pdf(paste(res_dir, "pairs_", i, ".pdf", sep=""), width = 10, height = 6)
+print(p)
+dev.off()
+png(paste(res_dir, "pairs_", i, ".png", sep=""), width = 800, height = 500)
+print(p)
+dev.off()
+
+# trace plots to check whether the model fit has converged and whether all chains agree
+p <- mcmc_trace(x, pars = c("mu_beta", "beta_WT[1]", "delta_beta[1]", "sigma_g[1,1]"),
+           off_diag_args = list(size = 1, alpha = 0.5), np=nuts_params(fit0))
+print(p)
+cairo_pdf(paste(res_dir, "trace_", i, ".pdf", sep=""), width = 10, height = 6)
+print(p)
+dev.off()
+png(paste(res_dir, "trace_", i, ".png", sep=""), width = 800, height = 500)
+print(p)
+dev.off()
+
+i <- "LNM"
+p <- mcmc_nuts_energy(nuts_params(fit0))
+print(p)
+cairo_pdf(paste(res_dir, "nuts_energy_", i, ".pdf", sep=""), width = 10, height = 6)
+print(p)
+dev.off()
+png(paste(res_dir, "nuts_energy_", i, ".png", sep=""), width = 800, height = 500)
+print(p)
+dev.off()
+```
+
+Distribution of differences in decay rate
+
+```{r}
+delta_beta_draws <- fit0$draws(variables=c("delta_beta"), format="matrix")
+delta_beta_proQ <- delta_beta_draws %>% apply(2, median)
+beta_WT <- fit0$draws(variables=c("beta_WT"), format="matrix") %>% apply(2, median)
+ggplot() +
+  geom_histogram(aes(delta_beta_proQ/beta_WT))
+diff <- which(delta_beta_proQ/beta_WT>0.05)
+rownames(proQ_reads)[diff]
+meta_data %>% subset(locus_tag %in% rownames(proQ_reads)[diff])
+```
+
+Plot decay rates
+```{r}
+list_param <- fit0$draws(format="matrix") %>% as.data.frame() %>% extract_params()
+list_param$locus_tag <- rownames(proQ_reads)
+list_param$com_id <- meta_data$com_id[match(list_param$locus_tag, meta_data$locus_tag)]
+plot_genes(res_dir, subset(stan_df, com_id %in% c("ileS", "yaaJ")), subset(list_param, com_id %in% c("ileS", "yaaJ")), model_id="LNM", addNorm = F, addDect = F, show.int=F, col=cb_palette_4[c(1,2)])
+```
+
+Fit log-normal model with count-dependent variance
+
+```{r}
+stan_file <- paste0(getwd(), "/../stan_models/LNMcdv_loo-1.0.stan")
+mod <- cmdstan_model(stan_file, pedantic=F)
+
+json_file <- tempfile(fileext = ".json")
+write_stan_json(data_list, json_file)
+
+# fit model with cmdstan
+fit_voom <- mod$sample(data = json_file, chains = 2, adapt_delta = 0.95, parallel_chains = 2, iter_warmup = 500, iter_sampling = 500, max_treedepth = 12)
+
+# save fitted model
+fit_voom$save_object(file = paste0(res_dir, "fit_LNMcdv.RDS"))
+rm(fit_voom)
+cpu_time_LNMvoom <- system.time(mod$sample(data = json_file, chains = 2, adapt_delta = 0.95, parallel_chains = 2, iter_warmup = 500, iter_sampling = 500, max_treedepth = 12))
+```
+
+```{r}
+fit_voom <- readRDS(paste0(res_dir, "fit_LNMcdv.RDS"))
+list_param_voom <- fit_voom$draws(format="matrix") %>% as.data.frame() %>% extract_params()
+list_param_voom$locus_tag <- rownames(proQ_reads)
+list_param_voom$com_id <- meta_data$com_id[match(list_param_voom$locus_tag, meta_data$locus_tag)]
+plot_genes(res_dir, subset(stan_df, com_id %in% c("ileS", "yaaJ")), subset(list_param, com_id %in% c("ileS", "yaaJ")), model_id="LNMcdv", addNorm = F, addDect = F, show.int=F, col=cb_palette_4[c(1,2)])
+```
+
+```{r}
+a <- fit_voom$summary("a", "median")$median
+lograw_max <- max(log(stan_df$raw+1))
+variance_trend <- function(log_raw){
+  1-a*log_raw/log_raw_max
+}
+
+stan_df_stats <- stan_df %>% group_by(locus_tag, time) %>% summarize(logcpm_sd=sd(logcpm), logcpm_mean=mean(logcpm))
+
+stan_df$logcpm_mean <- stan_df_stats$logcpm_mean[match(
+  paste(stan_df$locus_tag, stan_df$time),
+  paste(stan_df_stats$locus_tag, stan_df_stats$time))]
+stan_df$logcpm_sd <- stan_df_stats$logcpm_sd[match(
+  paste(stan_df$locus_tag, stan_df$time),
+  paste(stan_df_stats$locus_tag, stan_df_stats$time))]
+
+list_param_sigma <- list_param_voom %>% pivot_longer(matches("sigma"), names_to="time", names_prefix="sigma_g", values_to="sigma")
+list_param_sigma$time <- c(0,3,6,12,24)[match(list_param_sigma$time, (1:5) %>% as.character())]
+list_param_sigma$logcpm <- stan_df_stats$logcpm_mean[match(
+  paste(list_param_sigma$locus_tag, list_param_sigma$time),
+  paste(stan_df_stats$locus_tag, stan_df_stats$time)
+)]
+list_param_sigma$logcpm_sd <- stan_df_stats$logcpm_sd[match(
+  paste(list_param_sigma$locus_tag, list_param_sigma$time),
+  paste(stan_df_stats$locus_tag, stan_df_stats$time)
+)]
+
+list_param_sigma_org <- list_param %>% pivot_longer(matches("sigma"), names_to="time", names_prefix="sigma_g", values_to="sigma")
+list_param_sigma_org$time <- c(0,3,6,12,24)[match(list_param_sigma_org$time, (1:5) %>% as.character())]
+list_param_sigma$sigma_org <- list_param_sigma_org$sigma[match(
+  paste(list_param_sigma$locus_tag, list_param_sigma$time),
+  paste(list_param_sigma_org$locus_tag, list_param_sigma_org$time)
+)]
+
+p_sd <- ggplot(list_param_sigma, aes(logcpm)) +
+  geom_point(aes(y=logcpm_sd, col="SD"), alpha=0.4) +
+  geom_point(aes(y=sigma_org, col="LNM"), alpha=0.4) +
+  geom_point(aes(y=sigma*(1-a*logcpm/max(logcpm)), col="LNMcdv"), alpha=0.4) +
+  scale_color_manual(name="", values=c(viridis(3)[1:2], "orange", "gray")) +
+  theme(legend.title=element_text(face="bold"),
+        legend.text=element_text(size=8),
+        legend.key.width=unit(0.4,"cm"),legend.key.height=unit(0.4,"cm"), legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
+        legend.position="top")
+p_sd_diff <- ggplot(list_param_sigma, aes(logcpm)) +
+  geom_point(aes(y=sigma*(1-a*logcpm/max(logcpm)) - sigma_org), col=viridis(1), alpha=0.4) +
+  ylab(expression(sigma[cdv] - sigma[LNM])) +
+  theme(legend.title=element_text(face="bold"),
+        legend.text=element_text(size=8),
+        legend.key.width=unit(0.4,"cm"),legend.key.height=unit(0.4,"cm"),legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
+        legend.position="top")
+
+p <- cowplot::plot_grid(
+  p_sd, p_sd_diff,
+  ncol=2, labels=c('A', 'B'), label_size=14, scale=0.9)
+print(p)
+cairo_pdf(paste(res_dir, "variance_shrinkage.pdf", sep=""), width = 5, height = 2.3)
+print(p)
+dev.off()
+```
+
+Select parameters of interest
+
+```{r}
+calc_params <- function(fit, model_id) {
+  beta_WT_draws <- fit$draws("beta_WT", format="data.frame") %>% select(contains("beta_WT"))
+  beta_cond_draws <- beta_WT_draws + fit$draws("delta_beta", format="data.frame") %>% select(contains("delta_beta"))
+  beta_WT_quantiles <- beta_WT_draws %>% apply(2, function(x) quantile(x, probs=c(0.05, 0.5, 0.95)))
+  beta_WT <- beta_WT_quantiles[2,]
+  betaWT_min <- beta_WT_quantiles[1,]
+  betaWT_max <- beta_WT_quantiles[3,]
+  beta_cond <- beta_cond_draws %>% apply(2, median)
+  delta_beta <- beta_cond - beta_WT
+  p_hl <- ((log(2)/beta_cond_draws) - (log(2)/beta_WT_draws)) %>% apply(2, function(x) p_value(x, 0.05))
+  data.frame(model_id, beta_WT, betaWT_min, betaWT_max, delta_beta, p_hl)
+}
+```
+
+Compare CPU time and parameters (hl_WT, delta_hl and p values) computed using the LNM, NB and LNMvoom
+
+```{r}
+data.frame(cpu_time=c(cpu_time_LNM[c(1,4)] %>% sum, cpu_time_LNMvoom[c(1,4)] %>% sum), model=c("LNM", "LNMcdv")) %>% fwrite(paste0(res_dir, "cpu_times.csv"), quote=F)
+cpu_times <- fread(paste0(res_dir, "cpu_times.csv"), quote="\"")
+p_col <- cpu_times %>%
+  ggplot(aes(x=model, y=cpu_time)) +
+  geom_col(fill=viridis(1), alpha=0.5, col="black") +
+  ylab("CPU time [s]") +
+  theme(legend.title=element_text(face="bold"),
+        legend.text=element_text(size=8),
+        legend.key.width=unit(0.4,"cm"),legend.key.height=unit(0.4,"cm"), legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
+        legend.position="right")
+print(p_col)
+```
+
+```{r}
+gamma <- fit0$draws("gamma", format="data.frame") %>% select(contains("gamma")) %>% apply(2, median)
+compare_models_df <- calc_params(fit0, "LNM")
+compare_models_cdv <- calc_params(fit_voom, "LNMcdv")
+colnames(compare_models_cdv) <- c("model_id", "beta_WT_alt", "betaWT_min_alt", "betaWT_max_alt", "delta_beta_alt", "p_hl_alt")
+compare_models_df <- cbind(com_id=meta_data$com_id[match(rownames(proQ_reads), meta_data$locus_tag)], compare_models_df[-1], gamma, compare_models_cdv)
+```
+
+The model comparison requires uncommenting the runs related to CPU time
+
+```{r}
+p_WT <- compare_models_df %>%
+  ggplot(aes(x=beta_WT, y=beta_WT_alt-beta_WT, col=model_id)) +
+  scale_color_manual(name="model", values=c(viridis(3)[1], "orange")) +
+  scale_alpha_continuous(name=expression(paste(t[1/2, WT], "/", CI["68%"]))) +
+  xlab(expression(beta["LNM"])) +
+  ylab(expression(beta["alt"] - beta["LNM"])) +
+  geom_point() +
+  geom_linerange(aes(ymin=betaWT_min_alt-beta_WT, ymax=betaWT_max_alt-beta_WT), alpha=0.5) +
+  ggrepel::geom_label_repel(aes(label=com_id), size=3, data=compare_models_df %>% subset(model_id!="LNMrmt0" & abs(beta_WT_alt-beta_WT)>0.4)) +
+  theme(legend.title=element_text(face="bold"),
+        legend.text=element_text(size=8),
+        legend.key.width=unit(0.3,"cm"),legend.key.height=unit(0.3,"cm"),legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
+        legend.position="bottom", legend.box="vertical")
+print(p_WT)
+
+p_delta <- compare_models_df %>%
+  ggplot(aes(x=delta_beta, y=delta_beta_alt-delta_beta, col=model_id, alpha=-log10(p_hl))) +
+  scale_color_manual(name="model", values=c(viridis(3)[1], "orange")) +
+  scale_alpha_continuous(name=expression(paste(p[max], "-", p))) +
+  xlab(expression(paste( Delta, beta["LNM"]))) +
+  ylab(expression(paste( Delta, beta["alt"], " - ", Delta, beta["LNM"]))) +
+  geom_point() +
+  theme(legend.title=element_text(face="bold"),
+        legend.text=element_text(size=8),
+        legend.key.width=unit(0.3,"cm"),legend.key.height=unit(0.3,"cm"),legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
+        legend.position="bottom", legend.box="vertical")
+print(p_delta)
+p_p <- compare_models_df %>%
+  ggplot(aes(x=p_hl, y=p_hl_alt-p_hl, col=model_id)) +
+  scale_color_manual(name="model", values=c(viridis(3)[1], "orange")) +
+  xlab(expression(p["LNM"])) +
+  ylab(expression(p["alt"] - p["LNM"])) +
+  geom_point() +
+  theme(legend.title=element_text(face="bold"),
+        legend.text=element_text(size=8),
+        legend.key.width=unit(0.4,"cm"),legend.key.height=unit(0.4,"cm"),legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
+        legend.position="none")
+print(p_p)
+p_zoom <- compare_models_df %>% subset(p_hl_alt <= 0.1 | p_hl <= 0.1) %>%
+  ggplot(aes(x=p_hl, y=p_hl_alt-p_hl, col=model_id)) +
+  scale_color_manual(name="model", values=c(viridis(3)[1], "orange")) +
+  xlab(expression(p["LNM"])) +
+  ylab(expression(p["alt"] - p["LNM"])) +
+  geom_point() +
+  theme(legend.title=element_text(face="bold"),
+        legend.text=element_text(size=8),
+        legend.key.width=unit(0.4,"cm"),legend.key.height=unit(0.4,"cm"),legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
+        legend.position="none")
+print(p_zoom)
+
+p <- cowplot::plot_grid(
+  cowplot::plot_grid(p_col, p_WT, p_delta, ncol=3, labels=c('A', 'B', 'C'), rel_widths=c(0.2,0.4,0.4), label_size=14, scale=0.9),
+  cowplot::plot_grid(NULL, p_p, p_zoom, NULL, ncol=4, rel_widths=c(0.1,0.4,0.4,0.1), labels=c('', 'D', 'E', ''), label_size=14, scale=0.9), ncol=1, scale=1
+)
+print(p)
+cairo_pdf(paste(res_dir, "residues_model.pdf", sep=""), width = 5.5, height = 4)
+print(p)
+dev.off()
+```
+
+Model comparison: correlation matrices
+
+```{r}
+cormat <- compare_models_df %>% group_by(model_id) %>% summarise(cor_beta=wCorr::weightedCorr(beta_WT, beta_WT_alt, method="Pearson", weights=1/(betaWT_max-betaWT_min)), cor_delta=wCorr::weightedCorr(delta_beta, delta_beta_alt, method="Pearson", weights=1/(betaWT_max-betaWT_min)), cor_p=cor(p_hl, p_hl_alt, method="spearman"))
+```
+
+Model comparison with LOO-CV, requires log_lik to be calculated in the generated quantities section of the stan model
+
+```{r}
+loo_lnm <- fit0$loo(cores = 3)
+loo_cdv <- fit_voom$loo(cores = 3)
+```
+
+Model comparison with posterior predictive checking, requires y_rep to be calculated in the generated quantities section of the stan model
+
+```{r}
+yrep_res <- fit0$draws("y_rep", format="matrix")[1:50,] %>% t %>% as.data.frame()
+yrep_res$logrel <- stan_df$logrel2
+yrep_res$data_id <- 1:nrow(yrep_res)
+yrep_res$raw <- stan_df$raw
+yrep_res_long <- yrep_res %>% subset(raw>=10) %>% pivot_longer(!c(data_id, raw, logrel), values_to="count", names_to="draw")
+yrep_stats <- yrep_res_long %>% group_by(draw) %>% summarise(med=median(count-logrel, na.rm=T))
+yrep_stats2 <- yrep_res_long %>% group_by(data_id, raw, logrel) %>% summarise(med=median(count, na.rm=T))
+p_pred_lnm <- yrep_res_long %>% ggplot(aes(raw)) +
+  geom_line(aes(y=count-logrel, group=draw, col="samples"), alpha=0.05) +
+  rasterize(geom_point(aes(y=med-logrel, col="median"), alpha=0.5, data=yrep_stats2, size=0.03), dpi=150) +
+  scale_color_manual(name="", values=c("green", "black")) +
+  scale_y_continuous(name="Posterior predictive", limits=c(-3,3)) +
+  scale_x_log10(name="raw count", limits=c(1e1,1e5)) +
+  theme(axis.line=element_line(linewidth=unit(0.1, "pt")),
+        legend.position="none", legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
+        legend.key.width=unit(0.6,"cm"),legend.key.height=unit(0.3,"cm"),
+        strip.background = element_rect(fill=NA, linewidth=0.5), panel.spacing = unit(0, "lines"),
+        axis.text=element_text(color = "black")) +
+  annotate("text", x=6e4, y=-2.5, label="LNM", size=3)
+
+xplot <- yrep_res_long %>% ggplot(aes(raw)) +
+  geom_density(adjust=5) +
+  scale_x_log10(name="raw count", limits=c(1e1,1e5)) +
+  theme(axis.line=element_line(linewidth=unit(0.1, "pt")),
+        legend.position="none", legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
+        legend.key.width=unit(0.6,"cm"),legend.key.height=unit(0.3,"cm"),
+        strip.background = element_rect(fill=NA, linewidth=0.5), panel.spacing = unit(0, "lines"),
+        panel.grid=element_blank(), axis.text=element_text(color = "black"))
+xplot <- xplot + clean_theme() + rremove("legend")
+
+yplot <- yrep_res_long %>% ggplot(aes(count-logrel)) +
+  geom_line(aes(group=draw), stat="density", adjust=5, alpha=0.05, size=0.1) +
+  geom_vline(aes(xintercept=med), data=yrep_stats, alpha=0.05, size=0.1) +
+  scale_x_continuous(name="", limits=c(-3,3)) +
+  theme(axis.line=element_line(linewidth=unit(0.1, "pt")),
+        legend.position="none", legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
+        legend.key.width=unit(0.6,"cm"),legend.key.height=unit(0.3,"cm"),
+        strip.background = element_rect(fill=NA, linewidth=0.5), panel.spacing = unit(0, "lines"),
+        panel.grid=element_blank(), axis.text=element_text(color = "black"))
+yplot <- yplot + rotate() + clean_theme() + rremove("legend")
+p1 <- insert_xaxis_grob(p_pred_lnm, xplot, grid::unit(.2, "null"), position = "top")
+p2 <- insert_yaxis_grob(p1, yplot, grid::unit(.2, "null"), position = "right")
+p_pred_lnm <- ggdraw(p2)
+print(p_pred_lnm)
+```
+
+```{r}
+yrep_res <- fit_voom$draws("y_rep", format="matrix")[1:50,] %>% t %>% as.data.frame()
+yrep_res$data_id <- 1:nrow(yrep_res)
+yrep_res$logrel <- stan_df$logrel2
+yrep_res$raw <- stan_df$raw
+yrep_res_long <- yrep_res %>% subset(raw>=10) %>% pivot_longer(!c(data_id, raw, logrel), values_to="count", names_to="draw")
+yrep_stats <- yrep_res_long %>% group_by(draw) %>% summarise(med=median(count-logrel, na.rm=T))
+yrep_stats2 <- yrep_res_long %>% group_by(data_id, raw, logrel) %>% summarise(med=median(count, na.rm=T))
+p_pred_cdv <- yrep_res_long %>% ggplot(aes(raw)) +
+  geom_line(aes(y=count-logrel, group=draw, col="samples"), alpha=0.05) +
+  rasterize(geom_point(aes(y=med-logrel, col="median"), alpha=0.5, data=yrep_stats2, size=0.03), dpi=150) +
+  scale_color_manual(name="", values=c("green", "black")) +
+  scale_y_continuous(name="Posterior predictive", limits=c(-3,3)) +
+  scale_x_log10(name="raw count", limits=c(1e1,1e5)) +
+  theme(axis.line=element_line(linewidth=unit(0.1, "pt")),
+        legend.position="none", legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
+        legend.key.width=unit(0.6,"cm"),legend.key.height=unit(0.3,"cm"),
+        strip.background = element_rect(fill=NA, linewidth=0.5), panel.spacing = unit(0, "lines"),
+        axis.text=element_text(color = "black")) +
+  annotate("text", x=3e4, y=-2.5, label="LNMcdv", size=3)
+
+xplot <- yrep_res_long %>% ggplot(aes(raw)) +
+  geom_density(adjust=5) +
+  scale_x_log10(name="raw count", limits=c(1e1,1e5)) +
+  theme(axis.line=element_line(linewidth=unit(0.1, "pt")),
+        legend.position="none", legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
+        legend.key.width=unit(0.6,"cm"),legend.key.height=unit(0.3,"cm"),
+        strip.background = element_rect(fill=NA, linewidth=0.5), panel.spacing = unit(0, "lines"),
+        panel.grid=element_blank(), axis.text=element_text(color = "black"))
+xplot <- xplot + clean_theme() + rremove("legend")
+
+yplot <- yrep_res_long %>% ggplot(aes(count-logrel)) +
+  geom_line(aes(group=draw), stat="density", adjust=5, alpha=0.05, size=0.1) +
+  geom_vline(aes(xintercept=med), data=yrep_stats, alpha=0.05, size=0.1) +
+  scale_x_continuous(name="", limits=c(-3,3)) +
+  theme(axis.line=element_line(linewidth=unit(0.1, "pt")),
+        legend.position="none", legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
+        legend.key.width=unit(0.6,"cm"),legend.key.height=unit(0.3,"cm"),
+        strip.background = element_rect(fill=NA, linewidth=0.5), panel.spacing = unit(0, "lines"),
+        panel.grid=element_blank(), axis.text=element_text(color = "black"))
+yplot <- yplot + rotate() + clean_theme() + rremove("legend")
+p1 <- insert_xaxis_grob(p_pred_cdv, xplot, grid::unit(.2, "null"), position = "top")
+p2 <- insert_yaxis_grob(p1, yplot, grid::unit(.2, "null"), position = "right")
+p_pred_cdv <- ggdraw(p2)
+print(p_pred_cdv)
+```
+
+```{r}
+p_raw <- yrep_res_long %>% ggplot(aes(raw)) +
+  geom_line(aes(y=count-logrel, group=draw, col="samples"), alpha=0.05) +
+  rasterize(geom_point(aes(y=med, col="median"), alpha=0.5, data=yrep_stats2, size=0.03), dpi=150) +
+  scale_color_manual(name="", values=c("green", "black"))
+
+legend <- cowplot::get_legend(
+  # create some space to the left of the legend
+  p_raw + theme(legend.box.margin = margin(0, 0, 0, 12), legend.position="top", legend.key.width=unit(0.3,"cm"))
+)
+
+p <- cowplot::plot_grid(
+  cowplot::plot_grid(p_pred_lnm, p_pred_cdv, labels=c('A', 'B', 'C'), label_size=14, ncol=3, scale=0.95),
+  legend,
+  ncol=1, rel_heights=c(0.5, 0.1), scale=1)
+print(p)
+cairo_pdf(paste(res_dir, "posterior_predictive.pdf", sep=""), width = 6.9, height = 2.4)
+print(p)
+dev.off()
+```
+
+```{r}
+
+loo::loo_compare(loo_lnm, loo_cdv)
+
+stan_df$elpd_lnm <- loo_lnm$pointwise[, "elpd_loo"]
+stan_df$elpd_cdv <- loo_cdv$pointwise[, "elpd_loo"]
+
+p_loo <- stan_df %>% ggplot(aes(raw)) +
+  geom_point(aes(y=elpd_lnm, col="LNM")) +
+  geom_point(aes(y=elpd_cdv, col="LNMcdv")) +
+  scale_color_manual(name="model", values=c(viridis(3)[1:2], "orange")) +
+  scale_alpha_continuous(name=expression(paste(t[1/2, WT], "/", CI["68%"]))) +
+  ylab("ELPD") +
+  scale_x_log10(name="raw count") +
+  theme(legend.title=element_text(face="bold"),
+        legend.text=element_text(size=8),
+        legend.key.width=unit(0.3,"cm"),legend.key.height=unit(0.3,"cm"),legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
+        legend.position="bottom", legend.box="vertical")
+print(p_loo)
+
+p_loo <- stan_df %>% ggplot(aes(raw)) +
+  geom_point(aes(y=elpd_nb, col=factor(time))) +
+  scale_color_manual(name="time", values=c(viridis(5)[1:4], "orange")) +
+  scale_alpha_continuous(name=expression(paste(t[1/2, WT], "/", CI["68%"]))) +
+  ylab("ELPD") +
+  scale_x_log10(name="raw count") +
+  theme(legend.title=element_text(face="bold"),
+        legend.text=element_text(size=8),
+        legend.key.width=unit(0.3,"cm"),legend.key.height=unit(0.3,"cm"),legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
+        legend.position="bottom", legend.box="vertical")
+print(p_loo)
+
+p_loo <- stan_df %>% ggplot(aes(condition)) +
+  geom_violin(aes(y=elpd_lnm, col="LNM")) +
+  geom_violin(aes(y=elpd_cdv, col="LNMcdv")) +
+  geom_violin(aes(y=elpd_nb, col="NB")) +
+  scale_color_manual(name="model", values=c(viridis(3)[1:2], "orange")) +
+  scale_alpha_continuous(name=expression(paste(t[1/2, WT], "/", CI["68%"]))) +
+  ylab("ELPD") +
+  theme(legend.title=element_text(face="bold"),
+        legend.text=element_text(size=8),
+        legend.key.width=unit(0.3,"cm"),legend.key.height=unit(0.3,"cm"),legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
+        legend.position="bottom", legend.box="vertical")
+print(p_loo)
+
+p_loo_hist <- stan_df %>% ggplot() +
+  geom_density(aes(x=elpd_lnm, fill="LNM")) +
+  geom_density(aes(x=elpd_cdv, fill="LNMcdv")) +
+  geom_density(aes(x=elpd_nb, fill="NB")) +
+  scale_fill_manual(name=expression(gamma>3.5), values=c(viridis(3)[1:2], "orange")) +
+  scale_alpha_continuous(name=expression(paste(t[1/2, WT], "/", CI["68%"]))) +
+  xlab("ELPD") +
+  theme(legend.title=element_text(face="bold"),
+        legend.text=element_text(size=8),
+        legend.key.width=unit(0.3,"cm"),legend.key.height=unit(0.3,"cm"),legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
+        legend.position="bottom", legend.box="vertical")
+print(p_loo_hist)
+
+plot(
+  loo_lnm,
+  diagnostic = c("k", "n_eff"),
+  label_points = FALSE,
+  main = "PSIS diagnostic plot"
+)
+
+plot(
+  loo_nb,
+  diagnostic = c("k", "n_eff"),
+  label_points = FALSE,
+  main = "PSIS diagnostic plot"
+)
+```

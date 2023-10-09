@@ -1,11 +1,11 @@
 # RIF-seq_repo
 
-The directory *stan_models* contains to Stan model files:
+The directory *stan_models* contains Stan model files to analyze RIF-seq data:
 
 
 <div class="columns-2">
   
-  - **LNM.stan** extracts RNA decay rates from RNA sequencing data over a time course following treatment with the transcription initiation inhibitor rifampicin.
+  - **LNM.stan** extracts RNA decay rates from RNA sequencing data over a time course following treatment with the transcription initiation inhibitor rifampicin. Original model used in
   - **LNMsim.stan** simulates RNA decay curves for multiple experimental conditions or bacterial strains.
 </div>
 
@@ -62,7 +62,7 @@ it_g <- stan_df$locus_tag %>% factor %>% as.numeric
 
 # relevel stan_df$condition to the control condition.
 # Differences in decay rate will be given relative to the control.
-stan_df$condition <- factor(stan_df$condition) %>% relevel(ref="WT)
+stan_df$condition <- factor(stan_df$condition) %>% relevel(ref="WT")
 it_c <- stan_df$condition %>% as.numeric
 it_t <- stan_df$time %>% factor %>% as.numeric
 it_b <- stan_df$it_b
@@ -72,10 +72,11 @@ it_gc = (it_c - 1)*N_g + it_g
 it_gct = (it_gc - 1)*N_t + it_t
 it_gt = (it_g - 1)*N_t + it_t
 
+N_g <- unique(stan_df$locus_tag) %>% length
 N_con <- max(stan_df$it_c)
 N_s <- max(stan_df$it_s)
-N_b <- stan_df %>% group_by(it_c) %>% summarize(N_b=unique(it_b) %>% length) %>% pull(N_b)
-N_t <- unique(stan_df$time)
+N_b <- stan_df %>% group_by(condition) %>% summarize(N_b=unique(it_b) %>% length) %>% pull(N_b)
+N_t <- unique(stan_df$time) %>% length
 N_tot <- nrow(stan_df)
 ```
 
