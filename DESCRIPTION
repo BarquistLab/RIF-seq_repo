@@ -13,11 +13,20 @@ License: GPL-3
 LazyData: true
 Imports:
     data.table,
-    dplyr,
+    tidyverse,
     ggplot2,
+    ggpubr,
+    ggrastr,
+    viridis,
     loo,
     bayesplot,
+    cmdstanr,
+    posterior,
     rstan,
-    stringr
+    stringr,
+    cowplot,
+    Cairo,
+    wCorr,
+    MASS
 RoxygenNote: 7.2.3
 URL: http://github.com/BarquistLab/RIF-seq_repo

@@ -1,3 +1,8 @@
+//***************************************************************
+// Warning: This is an old version of the log-normal model which
+// requires Stan 2.31 and lower. For a newer and better documented
+// version, see LNM-1.0.stan
+//***************************************************************
 functions{
     // statistical model, running in parallel for individual genes
     vector ln_model(vector param, vector theta, real[] X, int[] y){

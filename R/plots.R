@@ -52,19 +52,11 @@ plot_gene <- function(data, results, lab, res_dir, addNorm=F, addDect=F, rm.cond
   }
   print(p)
   cairo_pdf(paste(res_dir,"decay_rate_",lab,".pdf",sep = ""), width = 4, height = 3.5)
-  # theme(axis.text=element_text(size=25),
-  #       axis.title=element_text(size=29),
-  #       plot.title=element_text(size=32,face="bold"),
-  #       legend.text=element_text(size=25),
-  #       legend.title=element_text(size=29,face="bold")) +
-  #   annotate("text", x=Inf, y=Inf, label=unique(data$com_id),
-  #            hjust="inward", vjust="inward", size=9)
-  # print(p)
-  # cairo_pdf(paste(res_dir,"decay_rate_",lab,".pdf",sep = ""), width = 7, height = 5)
   print(p)
   dev.off()
 }
 
+#' calculate decay curve for a set of parameters
 #' @export
 calc_mu <- function(pib, beta, gamma, time, model_id) {
   

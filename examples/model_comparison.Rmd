@@ -57,11 +57,12 @@ colnames(read_counts_in)[1] <- "locus_tag"
 # remove ProQ++ samples for example run
 read_counts_in <- read_counts_in[,-grep("proQp", colnames(read_counts_in))]
 
+# create long data.frame which has to correct format to export data for cmdstan and for downstream analysis of the modeling results
 stan_df <- read_counts_in[grep("^[Sn]",read_counts_in$locus_tag),] %>% pivot_longer(!locus_tag, names_to="sample", values_to="raw")
 sample_info <- strsplit(stan_df$sample, "_")
 stan_df$locus_tag <- stan_df$locus_tag %>% factor(levels=read_counts_in$locus_tag)
 
-# relevel stan_df$condition to the control condition.
+# relevel stan_df$condition to the control condition/strain.
 # Differences in decay rate will be given relative to the control.
 stan_df$condition <- sample_info %>% sapply(function(x) x[1]) %>% factor  %>% relevel(ref="WT")
 stan_df$time <- sample_info %>% sapply(function(x) sub("min", "", x[2])) %>% as.numeric()
@@ -84,11 +85,17 @@ proQ_reads <- read_counts_in[grep("^[Sn]",rownames(read_counts_in)),]
 nf_proQ <- get_norm_facs(proQ_reads, proQ_ercc, count_min=0, sample_min=0)
 ```
 
+Add meta data and sample parameters to long data.frame
+
 ```{r}
+# add common ID, library size and normalization factor to long data.frame
 stan_df$com_id <- meta_data$com_id[match(stan_df$locus_tag, meta_data$locus_tag)]
 stan_df$N_lib <- colSums(proQ_reads)[match(stan_df$sample, colnames(proQ_reads))]
 stan_df$n_f <- nf_proQ[match(stan_df$sample, colnames(proQ_reads))]
+# calculate cpm and logcpm values
 stan_df <- stan_df %>% mutate(cpm=(raw+0.5)*1e6/(N_lib*n_f+1), logcpm=log((raw+0.5)*1e6/(N_lib*n_f+1)))
+
+# Perform center-mean normalization. This is only required for downstream analysis, the Stan models work with raw counts and the center mean normalization is performed within the Stan models
 stan_df_t0 <- subset(stan_df, time==0) %>% group_by(locus_tag, condition) %>% summarise(logcpm0=logcpm %>% mean)
 stan_df$logcpm0 <- stan_df_t0$logcpm0[match(paste0(stan_df$locus_tag, stan_df$condition), paste0(stan_df_t0$locus_tag, stan_df_t0$condition))]
 stan_df <- stan_df %>% mutate(logrel=logcpm - logcpm0)
@@ -108,17 +115,22 @@ stan_df %>% subset(time==3) %>% ggplot(aes(logrel2-logrel_avg, col=(replicate %>
 Variables for Stan
 
 ```{r}
+# Define iterators required by the Stan models
+# condition, sample and locus_tag are expected to be factors, replicate and time numeric.
 it_c = stan_df$condition %>% as.numeric
 it_b = stan_df$replicate
 it_s = stan_df$sample %>% as.numeric
 it_g = stan_df$locus_tag %>% as.numeric
 it_t = stan_df$time %>% factor(levels=c("0", "3", "6", "12", "24")) %>% as.numeric
 
+# number of genetic features
 N_g = unique(stan_df$locus_tag) %>% length
+# combined iterators
 it_gc = (it_c - 1)*N_g + it_g
 N_t = unique(stan_df$time) %>% length
 
 data_list <- list(
+  # raw read counts, will be converted to log-counts in the Stan model
   raw = stan_df$raw,
   t = stan_df$time,
   it_g = it_g,
@@ -131,14 +143,18 @@ data_list <- list(
   it_gct = (it_gc - 1)*N_t + it_t,
   it_gt = (it_g - 1)*N_t + it_t,
   
+  # number of conditions/strains, including the reference condition/strain
   N_con = max(it_c),
+  # number of samples/sequencing libraries
   N_s = max(it_s),
+  # number of replicates per condition, same order as in it_c
   N_b = stan_df %>% group_by(condition) %>% summarize(N_b=unique(it_b) %>% length) %>% pull(N_b),
   N_t = N_t,
   N_g = N_g,
+  # total number of data points
   N_tot = nrow(stan_df),
   
-  # TMM normalization factors and library sizes
+  # TMM normalization factors and library sizes, same order as in it_s
   n_f = nf_proQ,
   N_lib = colSums(proQ_reads),
 
@@ -167,6 +183,7 @@ fit0 <- mod$sample(data = json_file, chains = 2, adapt_delta = 0.95, parallel_ch
 # save fitted model
 fit0$save_object(file = paste0(res_dir, "fit_LNM.RDS"))
 rm(fit0)
+# Rerun model to extract CPU time, useful for benchmarking and model comparison
 cpu_time_LNM <- system.time(mod$sample(data = json_file, chains = 2, adapt_delta = 0.95, parallel_chains = 2, iter_warmup = 500, iter_sampling = 500, max_treedepth = 12))
 ```
 
@@ -211,6 +228,7 @@ png(paste(res_dir, "trace_", i, ".png", sep=""), width = 800, height = 500)
 print(p)
 dev.off()
 
+# NUTS energy plots. If the two distributions lie on top of each other, the sampling is efficient
 i <- "LNM"
 p <- mcmc_nuts_energy(nuts_params(fit0))
 print(p)
@@ -236,7 +254,9 @@ meta_data %>% subset(locus_tag %in% rownames(proQ_reads)[diff])
 ```
 
 Plot decay rates
+
 ```{r}
+# The functions used here are all highly customized. It is also straight forward to work directly with the draws from the Stan fit.
 list_param <- fit0$draws(format="matrix") %>% as.data.frame() %>% extract_params()
 list_param$locus_tag <- rownames(proQ_reads)
 list_param$com_id <- meta_data$com_id[match(list_param$locus_tag, meta_data$locus_tag)]
@@ -253,29 +273,33 @@ json_file <- tempfile(fileext = ".json")
 write_stan_json(data_list, json_file)
 
 # fit model with cmdstan
-fit_voom <- mod$sample(data = json_file, chains = 2, adapt_delta = 0.95, parallel_chains = 2, iter_warmup = 500, iter_sampling = 500, max_treedepth = 12)
+fit_cdv <- mod$sample(data = json_file, chains = 2, adapt_delta = 0.95, parallel_chains = 2, iter_warmup = 500, iter_sampling = 500, max_treedepth = 12)
 
 # save fitted model
-fit_voom$save_object(file = paste0(res_dir, "fit_LNMcdv.RDS"))
-rm(fit_voom)
-cpu_time_LNMvoom <- system.time(mod$sample(data = json_file, chains = 2, adapt_delta = 0.95, parallel_chains = 2, iter_warmup = 500, iter_sampling = 500, max_treedepth = 12))
+fit_cdv$save_object(file = paste0(res_dir, "fit_LNMcdv.RDS"))
+rm(fit_cdv)
+cpu_time_LNMcdv <- system.time(mod$sample(data = json_file, chains = 2, adapt_delta = 0.95, parallel_chains = 2, iter_warmup = 500, iter_sampling = 500, max_treedepth = 12))
 ```
 
 ```{r}
-fit_voom <- readRDS(paste0(res_dir, "fit_LNMcdv.RDS"))
-list_param_voom <- fit_voom$draws(format="matrix") %>% as.data.frame() %>% extract_params()
-list_param_voom$locus_tag <- rownames(proQ_reads)
-list_param_voom$com_id <- meta_data$com_id[match(list_param_voom$locus_tag, meta_data$locus_tag)]
+fit_cdv <- readRDS(paste0(res_dir, "fit_LNMcdv.RDS"))
+list_param_cdv <- fit_cdv$draws(format="matrix") %>% as.data.frame() %>% extract_params()
+list_param_cdv$locus_tag <- rownames(proQ_reads)
+list_param_cdv$com_id <- meta_data$com_id[match(list_param_cdv$locus_tag, meta_data$locus_tag)]
 plot_genes(res_dir, subset(stan_df, com_id %in% c("ileS", "yaaJ")), subset(list_param, com_id %in% c("ileS", "yaaJ")), model_id="LNMcdv", addNorm = F, addDect = F, show.int=F, col=cb_palette_4[c(1,2)])
 ```
 
+Compare calculated variance and the variation unexplained by the model in the LNM and LNMcdv
+
 ```{r}
-a <- fit_voom$summary("a", "median")$median
+# The model parameter "a" indicates the dependence of the variance on the raw count.
+a <- fit_cdv$summary("a", "median")$median
 lograw_max <- max(log(stan_df$raw+1))
 variance_trend <- function(log_raw){
   1-a*log_raw/log_raw_max
 }
 
+# Calculate standard deviation
 stan_df_stats <- stan_df %>% group_by(locus_tag, time) %>% summarize(logcpm_sd=sd(logcpm), logcpm_mean=mean(logcpm))
 
 stan_df$logcpm_mean <- stan_df_stats$logcpm_mean[match(
@@ -285,7 +309,8 @@ stan_df$logcpm_sd <- stan_df_stats$logcpm_sd[match(
   paste(stan_df$locus_tag, stan_df$time),
   paste(stan_df_stats$locus_tag, stan_df_stats$time))]
 
-list_param_sigma <- list_param_voom %>% pivot_longer(matches("sigma"), names_to="time", names_prefix="sigma_g", values_to="sigma")
+# extract unexplained variation from LNM with count-dependent variance
+list_param_sigma <- list_param_cdv %>% pivot_longer(matches("sigma"), names_to="time", names_prefix="sigma_g", values_to="sigma")
 list_param_sigma$time <- c(0,3,6,12,24)[match(list_param_sigma$time, (1:5) %>% as.character())]
 list_param_sigma$logcpm <- stan_df_stats$logcpm_mean[match(
   paste(list_param_sigma$locus_tag, list_param_sigma$time),
@@ -296,6 +321,7 @@ list_param_sigma$logcpm_sd <- stan_df_stats$logcpm_sd[match(
   paste(stan_df_stats$locus_tag, stan_df_stats$time)
 )]
 
+# extract unexplained variation from original LNM (without count-dependent variance)
 list_param_sigma_org <- list_param %>% pivot_longer(matches("sigma"), names_to="time", names_prefix="sigma_g", values_to="sigma")
 list_param_sigma_org$time <- c(0,3,6,12,24)[match(list_param_sigma_org$time, (1:5) %>% as.character())]
 list_param_sigma$sigma_org <- list_param_sigma_org$sigma[match(
@@ -303,6 +329,7 @@ list_param_sigma$sigma_org <- list_param_sigma_org$sigma[match(
   paste(list_param_sigma_org$locus_tag, list_param_sigma_org$time)
 )]
 
+# plot abundance-variance relationship
 p_sd <- ggplot(list_param_sigma, aes(logcpm)) +
   geom_point(aes(y=logcpm_sd, col="SD"), alpha=0.4) +
   geom_point(aes(y=sigma_org, col="LNM"), alpha=0.4) +
@@ -312,6 +339,7 @@ p_sd <- ggplot(list_param_sigma, aes(logcpm)) +
         legend.text=element_text(size=8),
         legend.key.width=unit(0.4,"cm"),legend.key.height=unit(0.4,"cm"), legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
         legend.position="top")
+# difference in explained variation with and without modeling the count-variance relationship
 p_sd_diff <- ggplot(list_param_sigma, aes(logcpm)) +
   geom_point(aes(y=sigma*(1-a*logcpm/max(logcpm)) - sigma_org), col=viridis(1), alpha=0.4) +
   ylab(expression(sigma[cdv] - sigma[LNM])) +
@@ -320,6 +348,7 @@ p_sd_diff <- ggplot(list_param_sigma, aes(logcpm)) +
         legend.key.width=unit(0.4,"cm"),legend.key.height=unit(0.4,"cm"),legend.margin=margin(t=-0.2, b=-0.2, unit="cm"),
         legend.position="top")
 
+# summary figure
 p <- cowplot::plot_grid(
   p_sd, p_sd_diff,
   ncol=2, labels=c('A', 'B'), label_size=14, scale=0.9)
@@ -346,10 +375,10 @@ calc_params <- function(fit, model_id) {
 }
 ```
 
-Compare CPU time and parameters (hl_WT, delta_hl and p values) computed using the LNM, NB and LNMvoom
+Compare CPU time and parameters (hl_WT, delta_hl and p values) computed using the LNM, NB and LNMcdv
 
 ```{r}
-data.frame(cpu_time=c(cpu_time_LNM[c(1,4)] %>% sum, cpu_time_LNMvoom[c(1,4)] %>% sum), model=c("LNM", "LNMcdv")) %>% fwrite(paste0(res_dir, "cpu_times.csv"), quote=F)
+data.frame(cpu_time=c(cpu_time_LNM[c(1,4)] %>% sum, cpu_time_LNMcdv[c(1,4)] %>% sum), model=c("LNM", "LNMcdv")) %>% fwrite(paste0(res_dir, "cpu_times.csv"), quote=F)
 cpu_times <- fread(paste0(res_dir, "cpu_times.csv"), quote="\"")
 p_col <- cpu_times %>%
   ggplot(aes(x=model, y=cpu_time)) +
@@ -365,7 +394,7 @@ print(p_col)
 ```{r}
 gamma <- fit0$draws("gamma", format="data.frame") %>% select(contains("gamma")) %>% apply(2, median)
 compare_models_df <- calc_params(fit0, "LNM")
-compare_models_cdv <- calc_params(fit_voom, "LNMcdv")
+compare_models_cdv <- calc_params(fit_cdv, "LNMcdv")
 colnames(compare_models_cdv) <- c("model_id", "beta_WT_alt", "betaWT_min_alt", "betaWT_max_alt", "delta_beta_alt", "p_hl_alt")
 compare_models_df <- cbind(com_id=meta_data$com_id[match(rownames(proQ_reads), meta_data$locus_tag)], compare_models_df[-1], gamma, compare_models_cdv)
 ```
@@ -443,7 +472,7 @@ Model comparison with LOO-CV, requires log_lik to be calculated in the generated
 
 ```{r}
 loo_lnm <- fit0$loo(cores = 3)
-loo_cdv <- fit_voom$loo(cores = 3)
+loo_cdv <- fit_cdv$loo(cores = 3)
 ```
 
 Model comparison with posterior predictive checking, requires y_rep to be calculated in the generated quantities section of the stan model
@@ -496,7 +525,7 @@ print(p_pred_lnm)
 ```
 
 ```{r}
-yrep_res <- fit_voom$draws("y_rep", format="matrix")[1:50,] %>% t %>% as.data.frame()
+yrep_res <- fit_cdv$draws("y_rep", format="matrix")[1:50,] %>% t %>% as.data.frame()
 yrep_res$data_id <- 1:nrow(yrep_res)
 yrep_res$logrel <- stan_df$logrel2
 yrep_res$raw <- stan_df$raw

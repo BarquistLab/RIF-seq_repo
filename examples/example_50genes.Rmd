@@ -47,8 +47,6 @@ meta_data <- read.table(paste0(getwd(), "/../annotations/Salmonella_meta.csv"), 
 rownames(meta_data) <- meta_data$locus_tag
 ```
 
-Read in example data (3 replicates of the first 50 genes, WT and ΔproQ only) and create long data.frame for Stan
-
 ```{r}
 read_counts_in <- fread(paste0(data_dir, "proQ_RIF-seq_1-50.csv"), data.table=F)
 colnames(read_counts_in)[1] <- "locus_tag"
@@ -56,11 +54,12 @@ colnames(read_counts_in)[1] <- "locus_tag"
 # remove ProQ++ samples for example run
 read_counts_in <- read_counts_in[,-grep("proQp", colnames(read_counts_in))]
 
+# create long data.frame which has to correct format to export data for cmdstan and for downstream analysis of the modeling results
 stan_df <- read_counts_in[grep("^[Sn]",read_counts_in$locus_tag),] %>% pivot_longer(!locus_tag, names_to="sample", values_to="raw")
 sample_info <- strsplit(stan_df$sample, "_")
 stan_df$locus_tag <- stan_df$locus_tag %>% factor(levels=read_counts_in$locus_tag)
 
-# relevel stan_df$condition to the control condition.
+# relevel stan_df$condition to the control condition/strain.
 # Differences in decay rate will be given relative to the control.
 stan_df$condition <- sample_info %>% sapply(function(x) x[1]) %>% factor  %>% relevel(ref="WT")
 stan_df$time <- sample_info %>% sapply(function(x) sub("min", "", x[2])) %>% as.numeric()
@@ -83,11 +82,17 @@ proQ_reads <- read_counts_in[grep("^[Sn]",rownames(read_counts_in)),]
 nf_proQ <- get_norm_facs(proQ_reads, proQ_ercc, count_min=0, sample_min=0)
 ```
 
+Add meta data and sample parameters to long data.frame
+
 ```{r}
+# add common ID, library size and normalization factor to long data.frame
 stan_df$com_id <- meta_data$com_id[match(stan_df$locus_tag, meta_data$locus_tag)]
 stan_df$N_lib <- colSums(proQ_reads)[match(stan_df$sample, colnames(proQ_reads))]
 stan_df$n_f <- nf_proQ[match(stan_df$sample, colnames(proQ_reads))]
+# calculate cpm and logcpm values
 stan_df <- stan_df %>% mutate(cpm=(raw+0.5)*1e6/(N_lib*n_f+1), logcpm=log((raw+0.5)*1e6/(N_lib*n_f+1)))
+
+# Perform center-mean normalization. This is only required for downstream analysis, the Stan models work with raw counts and the center mean normalization is performed within the Stan models
 stan_df_t0 <- subset(stan_df, time==0) %>% group_by(locus_tag, condition) %>% summarise(logcpm0=logcpm %>% mean)
 stan_df$logcpm0 <- stan_df_t0$logcpm0[match(paste0(stan_df$locus_tag, stan_df$condition), paste0(stan_df_t0$locus_tag, stan_df_t0$condition))]
 stan_df <- stan_df %>% mutate(logrel=logcpm - logcpm0)
@@ -107,17 +112,22 @@ stan_df %>% subset(time==3) %>% ggplot(aes(logrel2-logrel_avg, col=(replicate %>
 Variables for Stan
 
 ```{r}
+# Define iterators required by the Stan models
+# condition, sample and locus_tag are expected to be factors, replicate and time numeric.
 it_c = stan_df$condition %>% as.numeric
 it_b = stan_df$replicate
 it_s = stan_df$sample %>% as.numeric
 it_g = stan_df$locus_tag %>% as.numeric
 it_t = stan_df$time %>% factor(levels=c("0", "3", "6", "12", "24")) %>% as.numeric
 
+# number of genetic features
 N_g = unique(stan_df$locus_tag) %>% length
+# combined iterators
 it_gc = (it_c - 1)*N_g + it_g
 N_t = unique(stan_df$time) %>% length
 
 data_list <- list(
+  # raw read counts, will be converted to log-counts in the Stan model
   raw = stan_df$raw,
   t = stan_df$time,
   it_g = it_g,
@@ -130,14 +140,18 @@ data_list <- list(
   it_gct = (it_gc - 1)*N_t + it_t,
   it_gt = (it_g - 1)*N_t + it_t,
   
+  # number of conditions/strains, including the reference condition/strain
   N_con = max(it_c),
+  # number of samples/sequencing libraries
   N_s = max(it_s),
+  # number of replicates per condition, same order as in it_c
   N_b = stan_df %>% group_by(condition) %>% summarize(N_b=unique(it_b) %>% length) %>% pull(N_b),
   N_t = N_t,
   N_g = N_g,
+  # total number of data points
   N_tot = nrow(stan_df),
   
-  # TMM normalization factors and library sizes
+  # TMM normalization factors and library sizes, same order as in it_s
   n_f = nf_proQ,
   N_lib = colSums(proQ_reads),
 

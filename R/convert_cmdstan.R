@@ -1,6 +1,4 @@
-#******************************************************************************************************************************
-#******* Loading cmdstan results *********************************************************************************************
-#
+#' Extract results from cmdstanr (LNM-1.0) and return data.frame with the parameters which are relevant for downstream analysis
 #' @export
 extract_params <- function(param_df, sig=5e-2, nThread=1, delta_thr=2e-2, pi_thr=1e-4, hl_thr=5e-2, hl_thr2=0.1) {
 
@@ -91,6 +89,7 @@ extract_params <- function(param_df, sig=5e-2, nThread=1, delta_thr=2e-2, pi_thr
   return(param_fit)
 }
 
+#' Extract results from cmdstanr (LNM-1.0 with gamma=0) and return data.frame with the parameters which are relevant for downstream analysis
 #' @export
 extract_params_g0 <- function(param_df, sig=5e-2, nThread=1, delta_thr=2e-2, pi_thr=1e-4, hl_thr=5e-2, hl_thr2=0.1) {
   
@@ -179,6 +178,8 @@ extract_params_g0 <- function(param_df, sig=5e-2, nThread=1, delta_thr=2e-2, pi_
   return(param_fit)
 }
 
+#' Extract results from cmdstanr (NB-1.0) and return data.frame with the parameters which are relevant for downstream analysis
+#' NB-1.0 is not part of the github repository
 #' @export
 extract_params_nb <- function(param_df, sig=5e-2, nThread=1, delta_thr=2e-2, pi_thr=1e-4, hl_thr=5e-2, hl_thr2=0.1) {
   

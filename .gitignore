@@ -27,8 +27,8 @@ figures/
 # executables of Stan models
 stan_models/LNM
 stan_models/LNM-1.0
-stan_models/LNM_horseshoe
+stan_models/LNM_loo-1.0
 stan_models/LNMcdv-1.0
+stan_models/LNMcdv_loo-1.0
 stan_models/LNMsim
-stan_models/NB-1.0
 

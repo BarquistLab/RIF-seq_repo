@@ -232,7 +232,12 @@ model{
 }
 
 generated quantities{
+  // log_lik is required for leave-one-out CV (loo-CV). It is recommandable to run this only on a subset of the data because otherwise,
+  // the Stan output files are very large.
   vector[N_tot] log_lik;
+  // y_rep is a random draw from the fitted log-normal distribution.
+  // It is required for posterior predictive checks. It is recommandable to run this only on a subset of the data because otherwise,
+  // the Stan output files are very large.
   vector[N_tot] y_rep;
   {
     vector[N_tot] x1; // indicator variable t>gamma

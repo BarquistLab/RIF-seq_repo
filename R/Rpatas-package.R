@@ -1,5 +1,5 @@
 #' @keywords internal
-#' @import dplyr
+#' @import tidyverse
 #' @import ggplot2
 #' @import ggpubr
 #' @import cowplot
