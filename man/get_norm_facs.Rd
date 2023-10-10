@@ -2,10 +2,12 @@
 % Please edit documentation in R/norm_fun.R
 \name{get_norm_facs}
 \alias{get_norm_facs}
-\title{remove genes/ercc spike-ins with very low/no counts, return normTMM}
+\title{remove genes/ercc spike-ins with very low/no counts, return TMM normalization 
+with ERCC spike-ins keeping the original library size}
 \usage{
 get_norm_facs(rif_reads, ercc_reads, count_min = 10, sample_min = 3)
 }
 \description{
-remove genes/ercc spike-ins with very low/no counts, return normTMM
+remove genes/ercc spike-ins with very low/no counts, return TMM normalization 
+with ERCC spike-ins keeping the original library size
 }

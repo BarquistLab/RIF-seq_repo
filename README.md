@@ -20,7 +20,7 @@ The directory *stan_models* contains Stan model files to analyze RIF-seq data:
 </div>
 If you have questions on how to adapt the statistical models to your sequencing data or if you are interested in using count-based models, please contact the authors directly.
 
-Here, we provide useful links regarding installing and running Stan models, in addition to instructions on how to prepare the data with **R** before running LNM.stan with cmdstan. For an example with cmdstanr, we have included *example_50genes.Rmd* in the *examples* directory.
+Here, we provide useful links regarding installing and running Stan models, in addition to instructions on how to prepare the data with **R** before running LNM.stan with cmdstan. For an example with cmdstanr, we have included *example_cmdstanr.Rmd* in the *examples* directory.
 
 ## Installing and running the Stan model LNM.stan
 
@@ -62,31 +62,44 @@ Then, the read counts and metadata should be organized in a long data frame ```s
 
 Furthermore, ```N_s``` normalization factors ```n_f``` (e.g. calculated from ERCC spike-ins) and RNA-seq library sizes ```N_lib``` (total number of reads per sample) are required.
 
-The data is then exported via ```stan_rdump```:
+The data is then exported via ```stan_rdump``` (see *example_cmdstan.Rmd* for a working example):
 
 ```
-raw <- stan_df$raw
-t <- stan_df$time
-it_g <- stan_df$locus_tag %>% factor %>% as.numeric
+# Define iterators required by the Stan models
+# condition, sample and locus_tag are expected to be factors, replicate and time numeric.
+it_c = stan_df$condition %>% as.numeric
+it_b = stan_df$replicate
+it_s = stan_df$sample %>% as.numeric
+it_g = stan_df$locus_tag %>% as.numeric
+it_t = stan_df$time %>% factor(levels=c("0", "3", "6", "12", "24")) %>% as.numeric
 
-# relevel stan_df$condition to the control condition.
-# Differences in decay rate will be given relative to the control.
-stan_df$condition <- factor(stan_df$condition) %>% relevel(ref="WT")
-it_c <- stan_df$condition %>% as.numeric
-it_t <- stan_df$time %>% factor %>% as.numeric
-it_b <- stan_df$it_b
-it_s <- stan_df$sample %>% factor %>% as.numeric
-
+# number of genetic features
+N_g = unique(stan_df$locus_tag) %>% length
+# combined iterators
 it_gc = (it_c - 1)*N_g + it_g
+N_t = unique(stan_df$time) %>% length
+
+# raw read counts, will be converted to log-counts in the Stan model
+raw = stan_df$raw
+t = stan_df$time
+
 it_gct = (it_gc - 1)*N_t + it_t
 it_gt = (it_g - 1)*N_t + it_t
 
-N_g <- unique(stan_df$locus_tag) %>% length
-N_con <- max(stan_df$it_c)
-N_s <- max(stan_df$it_s)
-N_b <- stan_df %>% group_by(condition) %>% summarize(N_b=unique(it_b) %>% length) %>% pull(N_b)
-N_t <- unique(stan_df$time) %>% length
-N_tot <- nrow(stan_df)
+# number of conditions/strains, including the reference condition/strain
+N_con = max(it_c)
+# number of samples/sequencing libraries
+N_s = max(it_s)
+# number of replicates per condition, same order as in it_c
+N_b = stan_df %>% group_by(condition) %>% summarize(N_b=unique(it_b) %>% length) %>% pull(N_b)
+N_t = N_t
+N_g = N_g
+# total number of data points
+N_tot = nrow(stan_df)
+
+# TMM normalization factors and library sizes, same order as in it_s
+n_f = nf_proQ
+N_lib = colSums(proQ_reads)
 ```
 
 Two switches have to be set before exporting the data via ```stan_rdump```:
@@ -100,9 +113,9 @@ batch_effects <- 1
 # 3: PLM
 model_id <- 1
 
-rstan::stan_rdump(c("N_con", "N_s", "N_b", "N_t", "N_g", "N_tot"), file=RIF-seq_data.R)
-rstan::stan_rdump(c("raw", "t", "N_lib", "n_f", "batch_effects", "model_id"), file=RIF-seq_data.R, append=T)
-rstan::stan_rdump(c("it_g", "it_gc", "it_gct", "it_gt", "it_t", "it_s", "it_b", "it_c"), file=RIF-seq_data.R, append=T)
+rstan::stan_rdump(c("N_con", "N_s", "N_b", "N_t", "N_g", "N_tot"), file="RIF-seq_data.R")
+rstan::stan_rdump(c("raw", "t", "N_lib", "n_f", "batch_effects", "model_id"), file="RIF-seq_data.R", append=T)
+rstan::stan_rdump(c("it_g", "it_gc", "it_gct", "it_gt", "it_t", "it_s", "it_b", "it_c"), file="RIF-seq_data.R", append=T)
 ```
 
 As explained in [^f1], we recommend using the log-normal model for the analysis of RIF-seq data, because it accounts for the delay because of ongoing transcription as well as for a finite baseline concentration of stable RNA which can be observed in RIF-seq data.

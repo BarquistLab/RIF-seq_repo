@@ -1,0 +1,192 @@
+---
+title: "Statistical model for scRNA-seq"
+author: "Laura Jenniches"
+date: "10/8/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+#
+```{r}
+knitr::opts_chunk$set(fig.path=paste0(getwd(),"/../figures/"), warning=F,
+                      message=F, echo=F, dev="cairo_pdf")
+```
+
+load R packages
+
+```{r}
+library(ggplot2)
+library(ggpubr)
+library(viridis)
+library(ggrastr)
+
+library(tidyverse)
+library(data.table)
+
+library(cmdstanr)
+library(bayesplot)
+library(posterior)
+
+devtools::load_all("~/RNA-seq/proQ/RIF-seq_repo")
+
+theme_set(theme_bw(base_size = 10))
+```
+
+set and create data and results directories, load gene meta data
+
+```{r}
+# set result directory for plots etc.
+data_dir <- paste0(getwd(), "/../data/")
+res_dir <- paste0(getwd(), "/../figures/")
+if(!dir.exists(res_dir)) dir.create(res_dir)
+cb_palette <- c(viridis(9)[1:8], "orange")
+
+# load reads
+meta_data <- read.table(paste0(getwd(), "/../annotations/Salmonella_meta.csv"), quote="\"", stringsAsFactors=F, header=T, sep="\t")
+rownames(meta_data) <- meta_data$locus_tag
+```
+
+```{r}
+read_counts_in <- fread(paste0(data_dir, "proQ_RIF-seq_1-50.csv"), data.table=F)
+colnames(read_counts_in)[1] <- "locus_tag"
+
+# remove ProQ++ samples for example run
+read_counts_in <- read_counts_in[,-grep("proQp", colnames(read_counts_in))]
+
+# create long data.frame which has to correct format to export data for cmdstan and for downstream analysis of the modeling results
+stan_df <- read_counts_in[grep("^[Sn]",read_counts_in$locus_tag),] %>% pivot_longer(!locus_tag, names_to="sample", values_to="raw")
+sample_info <- strsplit(stan_df$sample, "_")
+stan_df$locus_tag <- stan_df$locus_tag %>% factor(levels=read_counts_in$locus_tag)
+
+# relevel stan_df$condition to the control condition/strain.
+# Differences in decay rate will be given relative to the control.
+stan_df$condition <- sample_info %>% sapply(function(x) x[1]) %>% factor  %>% relevel(ref="WT")
+stan_df$time <- sample_info %>% sapply(function(x) sub("min", "", x[2])) %>% as.numeric()
+stan_df$replicate <- sample_info %>% sapply(function(x) sub("R", "", x[3])) %>% as.numeric()
+
+rownames(read_counts_in) <- read_counts_in$locus_tag
+read_counts_in <- read_counts_in[,-grep("locus_tag", colnames(read_counts_in))]
+
+stan_df$sample <- factor(stan_df$sample, levels=colnames(read_counts_in))
+```
+
+TMM Normalization with ERCC spike-ins
+
+```{r}
+proQ_ercc <- read_counts_in[grep("ERCC",rownames(read_counts_in)),]
+# remove ERCC spike-ins with zero counts if any
+remove_ercc <- which(apply(proQ_ercc, 1, prod)==0)
+if(length(remove_ercc)!=0) proQ_ercc <- proQ_ercc[-remove_ercc,]
+proQ_reads <- read_counts_in[grep("^[Sn]",rownames(read_counts_in)),]
+nf_proQ <- get_norm_facs(proQ_reads, proQ_ercc, count_min=0, sample_min=0)
+```
+
+Add meta data and sample parameters to long data.frame
+
+```{r}
+# add common ID, library size and normalization factor to long data.frame
+stan_df$com_id <- meta_data$com_id[match(stan_df$locus_tag, meta_data$locus_tag)]
+stan_df$N_lib <- colSums(proQ_reads)[match(stan_df$sample, colnames(proQ_reads))]
+stan_df$n_f <- nf_proQ[match(stan_df$sample, colnames(proQ_reads))]
+# calculate cpm and logcpm values
+stan_df <- stan_df %>% mutate(cpm=(raw+0.5)*1e6/(N_lib*n_f+1), logcpm=log((raw+0.5)*1e6/(N_lib*n_f+1)))
+
+# Perform center-mean normalization. This is only required for downstream analysis, the Stan models work with raw counts and the center mean normalization is performed within the Stan models
+stan_df_t0 <- subset(stan_df, time==0) %>% group_by(locus_tag, condition) %>% summarise(logcpm0=logcpm %>% mean)
+stan_df$logcpm0 <- stan_df_t0$logcpm0[match(paste0(stan_df$locus_tag, stan_df$condition), paste0(stan_df_t0$locus_tag, stan_df_t0$condition))]
+stan_df <- stan_df %>% mutate(logrel=logcpm - logcpm0)
+stan_df_tmp <- stan_df %>% group_by(locus_tag, condition, time) %>% summarise(logrel_avg=logrel %>% mean)
+stan_df$logrel_avg <- stan_df_tmp$logrel_avg[match(paste0(stan_df$locus_tag, stan_df$condition, stan_df$time), paste0(stan_df_tmp$locus_tag, stan_df_tmp$condition, stan_df_tmp$time))]
+stan_df_tmp <- stan_df %>% group_by(condition, time, replicate) %>% summarise(lognf2=mean(logrel-logrel_avg))
+stan_df$logrel2 <- stan_df$logrel - stan_df_tmp$lognf2[match(paste0(stan_df$time, stan_df$condition, stan_df$replicate), paste0(stan_df_tmp$time, stan_df$condition, stan_df_tmp$replicate))]
+```
+
+Verify that the center-mean normalization worked. Residuals of all replicates should be centered around 0.
+
+```{r}
+stan_df %>% subset(time==3) %>% ggplot(aes(logrel2-logrel_avg, col=(replicate %>% factor))) +
+  geom_density()
+```
+
+Variables for Stan
+
+```{r}
+# Define iterators required by the Stan models
+# condition, sample and locus_tag are expected to be factors, replicate and time numeric.
+it_c = stan_df$condition %>% as.numeric
+it_b = stan_df$replicate
+it_s = stan_df$sample %>% as.numeric
+it_g = stan_df$locus_tag %>% as.numeric
+it_t = stan_df$time %>% factor(levels=c("0", "3", "6", "12", "24")) %>% as.numeric
+
+# number of genetic features
+N_g = unique(stan_df$locus_tag) %>% length
+# combined iterators
+it_gc = (it_c - 1)*N_g + it_g
+N_t = unique(stan_df$time) %>% length
+
+# raw read counts, will be converted to log-counts in the Stan model
+raw = stan_df$raw
+t = stan_df$time
+
+it_gct = (it_gc - 1)*N_t + it_t
+it_gt = (it_g - 1)*N_t + it_t
+
+# number of conditions/strains, including the reference condition/strain
+N_con = max(it_c)
+# number of samples/sequencing libraries
+N_s = max(it_s)
+# number of replicates per condition, same order as in it_c
+N_b = stan_df %>% group_by(condition) %>% summarize(N_b=unique(it_b) %>% length) %>% pull(N_b)
+N_t = N_t
+N_g = N_g
+# total number of data points
+N_tot = nrow(stan_df)
+
+# TMM normalization factors and library sizes, same order as in it_s
+n_f = nf_proQ
+N_lib = colSums(proQ_reads)
+
+# Remove batch effects by using center mean normalization (yes=1, no=0)
+batch_effects = 1
+# Choose model:
+# 1: LNM
+# 2: LM
+# 3: PLM
+model_id = 1
+```
+
+Export for cmdstan with stan_rdump
+
+```{r}
+stan_file <- paste0(data_dir, "RIF-seq_data.R")
+rstan::stan_rdump(c("N_con", "N_s", "N_b", "N_t", "N_g", "N_tot"), file=stan_file)
+rstan::stan_rdump(c("raw", "t", "N_lib", "n_f", "batch_effects", "model_id"), file=stan_file, append=T)
+rstan::stan_rdump(c("it_g", "it_gc", "it_gct", "it_gt", "it_t", "it_s", "it_b", "it_c"), file=stan_file, append=T)
+```
+
+```{r}
+# load fit results from cmdstan
+fit_LNM <- rbind(cbind(fread(cmd=sprintf('grep -v "#" %s', paste0(data_dir, "RIF-seq_LNM-1.0_1.csv")), data.table=F, quote="\""), Chain=1),
+                 cbind(fread(cmd=sprintf('grep -v "#" %s', paste0(data_dir, "RIF-seq_LNM-1.0_2.csv")), data.table=F, quote="\""), Chain=2))
+```
+
+Bayesian diagnostics with customized bayesplot functions
+
+```{r}
+np_LNM <- extract_np(fit_LNM, n_iter=1000)
+plot_pairs(paste0(res_dir, "pairs_delta_beta.pdf"), fit_LNM, np=np_LNM, paste0("delta_beta.", 1:5))
+plot_trace(paste0(res_dir, "trace_delta_beta.pdf"), fit_LNM, np=np_LNM, paste0("delta_beta.", 1:5))
+plot_pairs(paste0(res_dir, "pairs_beta.pdf"), fit_LNM, np=np_LNM, c("mu_beta", "beta_WT.1", "delta_beta.1", "sigma_g.1.1"))
+plot_energy(paste0(res_dir, "nuts_energy.pdf"), np=np_LNM)
+```
+
+Plot decay rates
+
+```{r}
+list_param <- fit_LNM %>% extract_params()
+list_param$locus_tag <- rownames(proQ_reads)
+list_param$com_id <- meta_data$com_id[match(list_param$locus_tag, meta_data$locus_tag)]
+plot_genes(res_dir, subset(stan_df, com_id %in% c("ileS", "yaaJ")), subset(list_param, com_id %in% c("ileS", "yaaJ")), model_id="LNM", addNorm = F, addDect = F, show.int=F, col=cb_palette_4[c(1,2)])
+```

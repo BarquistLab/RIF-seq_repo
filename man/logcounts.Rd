@@ -2,14 +2,14 @@
 % Please edit documentation in R/norm_fun.R
 \name{logcounts}
 \alias{logcounts}
-\title{log cpm values, only for normalization,
+\title{logcpm values, required for normalization,
 otherwise, the natural logarithm is used
 throughout the analysis.}
 \usage{
 logcounts(Y, N)
 }
 \description{
-log cpm values, only for normalization,
+logcpm values, required for normalization,
 otherwise, the natural logarithm is used
 throughout the analysis.
 }
