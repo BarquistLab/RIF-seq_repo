@@ -1,6 +1,6 @@
 # RIF-seq_repo
 
-This repository contains Stan models for the analysis of RNA decay in bacteria which have been treated with the transcription initiation inhibitor rifampicin followed by sequencing (RIF-seq) which were used to extract RNA decay parameters in [^f1]. It was shown that models based on log-counts can be used to describe RNA-seq data when the mean-variance relationship is modeled [^f2]. Because of computational efficiency, all models in this repository are based on log-counts rather than raw counts. The Stan models are in the directory *stan_models*. The directory *R* contains some R functions which may be helpful for the downstream analysis, but which are not required for running the Stan models. An example on how to run the Stan model with cmdstanr can be found the *examples* directory. The required data files are provided in *data*. Furthermore, a log-normal model (LNM) with and without modeling the mean-variance relationship are compared in *model_comparison.Rmd* including using Baysian model comparison techniques like leave-one-out cross validation (loo-CV)[^f3] and posterior predictive checks [^f4]. Alternatively, the data can be exported using stan_rdump as described below and run with cmdstan, the command line version of Stan (or with PyStan).
+This repository contains Stan models for the analysis of RNA decay in bacteria which have been treated with the transcription initiation inhibitor rifampicin followed by sequencing (RIF-seq) which were used to extract RNA decay parameters in [^f1]. It was shown that models based on log-counts can be used to describe RNA-seq data when the mean-variance relationship is modeled [^f2]. Because of computational efficiency, all models in this repository are based on log-counts rather than raw counts. The Stan models are in the directory *stan_models*. The directory *R* contains some R functions which may be helpful for the downstream analysis, but which are not required for running the Stan models. An example on how to run the Stan model with cmdstanr can be found the *examples* directory. The required data files are provided in *data*. Furthermore, a log-normal model (LNM) with and without modeling the mean-variance relationship are compared in *model_comparison.Rmd* including using Baysian model comparison techniques like leave-one-out cross validation (LOO-CV)[^f3] and posterior predictive checks [^f4]. Alternatively, the data can be exported using stan_rdump as described below and run with cmdstan, the command line version of Stan (or with PyStan).
 
 ## Stan models
 
@@ -11,24 +11,24 @@ The directory *stan_models* contains Stan model files to analyze RIF-seq data:
 <div class="columns-2">
   
   - **LNM-1.0.stan** This Stan file contains a log-normal model (LNM) which fits RNA decay curves of rifampicin treated bacteria. Its parameters have been described in [^f1]. It is compatible with Stan (>=2.31). Since it is based on normalized log-counts, it is suitable for sequencing experiments with similar library sizes. If the library sizes are very different, we recommend using LNMcdv-1.0.stan, which models the variance-mean relationship.
-  - **LNMcdv-1.0.stan** In this Stan model, the variance depends on the raw sequencing counts. It is therefore suitable for sequencing experiments with large differences in library size, while it is still very efficient computationally.
+  - **LNMcdv-1.0.stan** In this Stan model, the variance depends on the raw sequencing counts. It is therefore suitable for sequencing experiments with large differences in library size, while it is still computationally more efficient than a count-based (negative binomial) model. In *model_comparison.Rmd*, the LNM with and without mean-variance modeling are compared.
+  - **LNM_loo-1.0.stan** Same as LNM-1.0.stan, but the quantities requried for LOO-CV and posterior predictive checks are computed in the generated quantities block. This makes the model computationally less efficient. Therefore, it should only be used for model comparison.
+  - **LNMcdv_loo-1.0.stan** Same as LNMcdv-1.0.stan, but the quantities requried for LOO-CV and posterior predictive checks are computed in the generated quantities block. This makes the model computationally less efficient. Therefore, it should only be used for model comparison.
   - **LNM.stan** This is the original model used to extract RNA decay rates in [^f1]. It is compatible and tested with Stan 2.28 - 2.31. Starting from Stan 2.32, the syntax of array definition has changed https://mc-stan.org/docs/2_29/reference-manual/brackets-array-syntax.html . We recommend using LNM-1.0.stan instead, where the array definitions have been updated to the new syntax (Stan >=2.31).
   - **LNMsim.stan** simulates RNA decay curves for multiple experimental conditions or bacterial strains (Stan <=2.31).
 
 </div>
-For more statistical models, please contact the authors directly.
+If you have questions on how to adapt the statistical models to your sequencing data or if you are interested in using count-based models, please contact the authors directly.
 
-Here, we provide useful links regarding installing and running Stan models can be found in addition to instructions on how to prepare the data with **R** before running LNM.stan with cmdstan.
+Here, we provide useful links regarding installing and running Stan models, in addition to instructions on how to prepare the data with **R** before running LNM.stan with cmdstan. For an example with cmdstanr, we have included *example_50genes.Rmd* in the *examples* directory.
 
 ## Installing and running the Stan model LNM.stan
-
-The Stan models are compatible and tested with Stan 2.28 - 2.31. Starting from Stan 2.32, the syntax of array definition has changed https://mc-stan.org/docs/2_29/reference-manual/brackets-array-syntax.html . To run the models with Stan 2.32 and higher, the array definitions have to be adjusted.
 
 The Stan models can be run using various interfaces. Depeding on the size of the analyzed dataset, fitting the parameters can take several days even with multithreading. It is therefore recommended to use cmdstan: https://mc-stan.org/docs/2_31/cmdstan-guide/cmdstan-installation.html .
 
 > **Note**
 > 
-> LNM.stan uses the Stan function ```reduce_sum```. To reduce computation time, multithreading should be used following the guide https://mc-stan.org/docs/2_31/cmdstan-guide/parallelization.html .
+> The Stan models use the function ```reduce_sum```. To reduce computation time, multithreading should be enabled following the guide https://mc-stan.org/docs/2_31/cmdstan-guide/parallelization.html .
 
 After installing cmdstan, a directory for the Stan model can be created within the cmdstan directory and the Stan model can be installed following the cmdstan instructions: https://mc-stan.org/docs/2_31/cmdstan-guide/compiling-a-stan-program.html .
 
