@@ -1,6 +1,6 @@
 # RIF-seq_repo
 
-This repository contains Stan models for the analysis of RNA decay in bacteria which have been treated with the transcription initiation inhibitor rifampicin followed by sequencing (RIF-seq) which were used to extract RNA decay parameters in [^f1]. It was shown that models based on log-counts can be used to describe RNA-seq data when the mean-variance relationship is modeled [^f2]. Because of computational efficiency, all models in this repository are based on log-counts rather than raw counts. The Stan models are in the directory *stan_models*. The directory *R* contains some R functions which may be helpful for the downstream analysis, but which are not required for running the Stan models. An example on how to run the Stan model with cmdstanr can be found the *examples* directory. The required data files are provided in *data*. Furthermore, a log-normal model (LNM) with and without modeling the mean-variance relationship are compared in *model_comparison.Rmd* including using Baysian model comparison techniques like leave-one-out cross validation (LOO-CV)[^f3] and posterior predictive checks [^f4]. Alternatively, the data can be exported using stan_rdump as described below and run with cmdstan, the command line version of Stan (or with PyStan).
+This repository contains Stan models for the analysis of RNA decay in bacteria which have been treated with the transcription initiation inhibitor rifampicin followed by sequencing (RIF-seq) which were used to extract RNA decay parameters in [^f1]. It was shown that models based on log-counts can be used to describe RNA-seq data when the mean-variance relationship is modeled [^f2]. Because of computational efficiency, all models in this repository are based on log-counts rather than raw counts. The Stan models are in the directory *stan_models*. The directory *R* contains some R functions which may be helpful for the downstream analysis, but which are not required for running the Stan models. An example on how to run the Stan model with cmdstanr can be found the *examples* directory. The required data files are provided in *data*. Furthermore, a log-normal model (LNM) with and without modeling the mean-variance relationship are compared in *model_comparison.Rmd* including using Baysian model comparison techniques like leave-one-out cross validation (LOO-CV)[^f3] and posterior predictive checks [^f4]. Alternatively, the data can be exported using ``stan_rdump``` as described below and run with cmdstan, the command line version of Stan (or with PyStan).
 
 ## Stan models
 
@@ -105,6 +105,8 @@ rstan::stan_rdump(c("raw", "t", "N_lib", "n_f", "batch_effects", "model_id"), fi
 rstan::stan_rdump(c("it_g", "it_gc", "it_gct", "it_gt", "it_t", "it_s", "it_b", "it_c"), file=RIF-seq_data.R, append=T)
 ```
 
+As explained in [^f1], we recommend using the log-normal model for the analysis of RIF-seq data, because it accounts for the delay because of ongoing transcription as well as for a finite baseline concentration of stable RNA which can be observed in RIF-seq data.
+
 ## Importing the cmdstan results with R
 
 cmdstan saves the results from the HMC sampler in a csv file, e.g. RIF-seq_results.csv. Since the csv files can be quite large, it is recommended to import them using ```fread```, e.g.
@@ -113,7 +115,7 @@ cmdstan saves the results from the HMC sampler in a csv file, e.g. RIF-seq_resul
 stan_samples <- fread(cmd = 'grep -v "#" RIF-seq_results.csv', data.table = F)
 ```
 
-The WT (control) decay rates are saved in ```betas.1.it_g```, the differences in decay rate for condition/strain ```it_c``` are saved in ```betas.it_c.it_g```. Then, the medians and quantiles can be obtained from the data frame ```stan_samples``` as follows:
+The WT (control) decay rates of gene ```it_g``` are saved in ```betas.1.it_g``` (LNM) or ```beta_WT.it_g``` (LNM-1.0, LNMcdv-1.0), the differences in decay rate for condition/strain ```it_c``` are saved in ```betas.it_c.it_g``` (LNM) or ```delta_beta.(it_c-1).it_g``` (LNM-1.0, LNMcdv-1.0). Then, the medians and quantiles can be obtained from the data frame ```stan_samples``` as follows:
 
 ```
 beta_WT <- stan_samples[,grep("^betas\\.1\\.", colnames(stan_samples)] %>% apply(2, function(x) quantile(x, probs=c(0.05, 0.5, 0.95))
