@@ -131,6 +131,6 @@ rstan::stan_rdump(c("it_g", "it_gc", "it_gct", "it_gt", "it_t", "it_s", "it_b", 
 
 The model simulates normalized relative log-counts (i.e. the mean log-count at t=0 min is set to zero). These can be converted to raw counts using library sizes and normalization factors.
 
-[^f1]: Improved RNA stability estimation through Bayesian modeling reveals most bacterial transcripts have sub-minute half-lives
- View ORCID Profile Laura Jenniches, Charlotte Michaux, Sarah Reichardt, Jörg Vogel, ProfileAlexander J. Westermann, Lars Barquist
+[^f1]: Improved RNA stability estimation through Bayesian modeling reveals most bacterial transcripts have sub-minute half-lives.
+ *Laura Jenniches, Charlotte Michaux, Sarah Reichardt, Jörg Vogel, ProfileAlexander J. Westermann, Lars Barquist.*
 doi: https://doi.org/10.1101/2023.06.15.545072
