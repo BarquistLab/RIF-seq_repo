@@ -1,15 +1,20 @@
 # RIF-seq_repo
 
-The directory *stan_models* contains Stan model files to analyze RIF-seq data:
+This repository contains Stan models for the analysis of RNA decay in bacteria which have been treated with the transcription initiation inhibitor rifampicin followed by sequencing (RIF-seq).
 
+## Stan models
+
+Stan is a probabilistic programming language. Extensive documentation on how to develop and run Stan models can be found on the Stan website: https://mc-stan.org/ .
+
+The directory *stan_models* contains Stan model files to analyze RIF-seq data:
 
 <div class="columns-2">
   
-  - **LNM.stan** extracts RNA decay rates from RNA sequencing data over a time course following treatment with the transcription initiation inhibitor rifampicin. Original model used in
+  - **LNM.stan** This is the original model used to extract RNA decay rates in [^f1].
   - **LNMsim.stan** simulates RNA decay curves for multiple experimental conditions or bacterial strains.
 </div>
 
-Extensive documentation on how to develop and run Stan models can be found on the Stan website: https://mc-stan.org/ . Here, useful links regarding installing and running Stan models can be found in addition to instructions on how to prepare the data with **R** before running LNM.stan with cmdstan.
+ Here, we provide useful links regarding installing and running Stan models can be found in addition to instructions on how to prepare the data with **R** before running LNM.stan with cmdstan.
 
 ## Installing and running the Stan model LNM.stan
 
@@ -125,3 +130,7 @@ rstan::stan_rdump(c("it_g", "it_gc", "it_gct", "it_gt", "it_t", "it_s", "it_b", 
 ```
 
 The model simulates normalized relative log-counts (i.e. the mean log-count at t=0 min is set to zero). These can be converted to raw counts using library sizes and normalization factors.
+
+[^f1] Improved RNA stability estimation through Bayesian modeling reveals most bacterial transcripts have sub-minute half-lives
+ View ORCID Profile Laura Jenniches, Charlotte Michaux, Sarah Reichardt, Jörg Vogel, ProfileAlexander J. Westermann, Lars Barquist
+doi: https://doi.org/10.1101/2023.06.15.545072
