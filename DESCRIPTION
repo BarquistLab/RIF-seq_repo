@@ -15,18 +15,19 @@ Imports:
     data.table,
     tidyverse,
     ggplot2,
-    ggpubr,
-    ggrastr,
     viridis,
-    loo,
     bayesplot,
-    cmdstanr,
-    posterior,
     rstan,
     stringr,
-    cowplot,
     Cairo,
     wCorr,
     MASS
+Suggests:
+    cowplot,
+    cmdstanr,
+    posterior,
+    loo,
+    ggpubr,
+    ggrastr
 RoxygenNote: 7.2.3
 URL: http://github.com/BarquistLab/RIF-seq_repo

@@ -29,7 +29,7 @@ library(cmdstanr)
 library(bayesplot)
 library(posterior)
 
-devtools::load_all("~/RNA-seq/proQ/RIF-seq_repo")
+devtools::load_all("..")
 
 theme_set(theme_bw(base_size = 10))
 ```

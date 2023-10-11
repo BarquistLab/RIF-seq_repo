@@ -41,11 +41,11 @@ After creating a RIF-seq_data.R file, the decay rates can be fitted with ``` ./L
 
 <div class="columns-2">
   
-  - **CRAN** data.table, tidyverse, ggplot2, bayesplot
+  - **CRAN** knitr, data.table, tidyverse, ggplot2, bayesplot
   - **github** cmdstanr (only required for workflow cmdstanr)
 </div>
 
-Running the model comparison script requires installing additional packages.
+Running the model comparison script requires installing additional packages (see the file "DESCRIPTION" for a list).
 
 ## Exporting the read counts and metadata to cmdstan format with R
 

@@ -7,7 +7,7 @@ similar to implementaion in edgeR
 ERCC spike-ins are not expected to have large log-fold changes, therefore
 trimM and trimA are set to zero}
 \usage{
-normTMM(ercc_reads, N, trimM = 0, trimA = 0)
+normTMM(ercc_reads, N, trimM = 0.3, trimA = 0.05)
 }
 \description{
 normalize sequencing libraries with trimmed mean of M values (TMM)
