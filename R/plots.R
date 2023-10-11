@@ -56,23 +56,6 @@ plot_gene <- function(data, results, lab, res_dir, addNorm=F, addDect=F, rm.cond
   dev.off()
 }
 
-#' calculate decay curve for a set of parameters
-#' @export
-calc_mu <- function(pib, beta, gamma, time, model_id) {
-  
-  mu <- 0
-  if (grepl("LNM", model_id)) {
-    mu <- log( pib + (1 - pib) * exp(-beta*(time - gamma)) )
-  } else if (model_id=="NB") {
-    mu <- log( pib + (1 - pib) * exp(-beta*(time - gamma)) )
-  } else if (model_id=="PLM") {
-    mu <- -beta*(time - gamma)
-  } else {
-    mu <- -beta*time
-  }
-  return(mu)
-}
-
 #' gene-wise plots of (exponential) decay
 #' @export
 plot_genes <- function(res_dir, dfit, param, id_RNA=NULL, model_id="", addNorm=F, addDect=F, rm.cond=NULL, show.int=T, col=viridis(4)){

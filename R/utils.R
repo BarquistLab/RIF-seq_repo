@@ -44,3 +44,20 @@ p_value <- function(x, int0=0, h0=0) {
 scientific_10 <- function(x) {
   parse(text=gsub("e", " %*% 10^", scales::scientific_format()(x)))
 }
+
+#' calculate decay curve for a set of parameters
+#' @export
+calc_mu <- function(pib, beta, gamma, time, model_id) {
+  
+  mu <- 0
+  if (grepl("LNM", model_id)) {
+    mu <- log( pib + (1 - pib) * exp(-beta*(time - gamma)) )
+  } else if (model_id=="NB") {
+    mu <- log( pib + (1 - pib) * exp(-beta*(time - gamma)) )
+  } else if (model_id=="PLM") {
+    mu <- -beta*(time - gamma)
+  } else {
+    mu <- -beta*time
+  }
+  return(mu)
+}

@@ -24,7 +24,10 @@ Here, we provide useful links regarding installing and running Stan models, in a
 
 ## Installing and running the Stan model LNM.stan
 
-The Stan models can be run using various interfaces. Depeding on the size of the analyzed dataset, fitting the parameters can take several days even with multithreading. It is therefore recommended to use cmdstan: https://mc-stan.org/docs/2_31/cmdstan-guide/cmdstan-installation.html .
+The Stan models can be run using various interfaces. Depeding on the size of the analyzed dataset, fitting the parameters can take several days even with multithreading. It is therefore recommended to use cmdstan (example workflow in *example_cmdstan.Rmd*): https://mc-stan.org/docs/2_31/cmdstan-guide/cmdstan-installation.html
+
+Alternatively, smaller (test) data sets can be analyzed using cmdstanr. This requires the installation of the the R package cmdstanr **and** the installation of cmdstan. An installation guide can be found here (example workflow in *example_cmdstanr.Rmd*):
+https://mc-stan.org/cmdstanr/
 
 > **Note**
 > 
@@ -33,6 +36,16 @@ The Stan models can be run using various interfaces. Depeding on the size of the
 After installing cmdstan, a directory for the Stan model can be created within the cmdstan directory and the Stan model can be installed following the cmdstan instructions: https://mc-stan.org/docs/2_31/cmdstan-guide/compiling-a-stan-program.html .
 
 After creating a RIF-seq_data.R file, the decay rates can be fitted with ``` ./LNM sample data file=RIF-seq_data.R``` following the cmdstan instructions: https://mc-stan.org/docs/2_31/cmdstan-guide/mcmc-intro.html. The model was tested using 1000 warmup iterations and 1000 sampling iterations.
+
+## Required R packages for workflow with cmdstan/cmdstanr
+
+<div class="columns-2">
+  
+  - **CRAN** data.table, tidyverse, ggplot2, bayesplot
+  - **github** cmdstanr (only required for workflow cmdstanr)
+</div>
+
+Running the model comparison script requires installing additional packages.
 
 ## Exporting the read counts and metadata to cmdstan format with R
 

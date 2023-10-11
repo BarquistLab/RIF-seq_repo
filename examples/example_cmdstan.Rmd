@@ -182,11 +182,54 @@ plot_pairs(paste0(res_dir, "pairs_beta.pdf"), fit_LNM, np=np_LNM, c("mu_beta", "
 plot_energy(paste0(res_dir, "nuts_energy.pdf"), np=np_LNM)
 ```
 
-Plot decay rates
+Extract parameters of interest and plot decay curves
 
 ```{r}
 list_param <- fit_LNM %>% extract_params()
 list_param$locus_tag <- rownames(proQ_reads)
 list_param$com_id <- meta_data$com_id[match(list_param$locus_tag, meta_data$locus_tag)]
-plot_genes(res_dir, subset(stan_df, com_id %in% c("ileS", "yaaJ")), subset(list_param, com_id %in% c("ileS", "yaaJ")), model_id="LNM", addNorm = F, addDect = F, show.int=F, col=cb_palette_4[c(1,2)])
+```
+
+```{r}
+lab <- "ileS"
+ig <- which(list_param$com_id==lab)
+t <- (0:240)/10
+fit_df <- data.frame(
+  time=c(t,t),
+  logrel=c(
+    sapply(t, function(x) calc_mu(list_param$pib_WT[ig], list_param$beta_WT[ig], list_param$gamma[ig], x, "LNM")),
+    sapply(t, function(x) calc_mu(list_param$pib_1[ig], list_param$beta_1[ig], list_param$gamma[ig], x, "LNM"))),
+  condition=rep(c("WT", "dproQ"), each=length(t)))
+subset(stan_df, com_id==lab) %>% ggplot(aes(x=time, y=logrel, col=condition)) +
+  geom_point() +
+  geom_line(aes(group=condition), data=fit_df) +
+  scale_color_manual(name="", values=cb_palette_4[c(1,2)]) +
+  theme(axis.line=element_line(linewidth=unit(0.1, "pt")),
+        legend.position="top", legend.box="vertical",
+        legend.margin=margin(t=-0.15, b=-0.15, unit="cm"),
+        legend.key.width=unit(0.3,"cm"),legend.key.height=unit(0.3,"cm"),
+        strip.background = element_rect(fill=NA, size=0.5), panel.spacing = unit(0, "lines"),
+        panel.grid=element_blank(), axis.text=element_text(color = "black"))
+```
+
+```{r}
+lab <- "yaaJ"
+ig <- which(list_param$com_id==lab)
+t <- (0:240)/10
+fit_df <- data.frame(
+  time=c(t,t),
+  logrel=c(
+    sapply(t, function(x) calc_mu(list_param$pib_WT[ig], list_param$beta_WT[ig], list_param$gamma[ig], x, "LNM")),
+    sapply(t, function(x) calc_mu(list_param$pib_1[ig], list_param$beta_1[ig], list_param$gamma[ig], x, "LNM"))),
+  condition=rep(c("WT", "dproQ"), each=length(t)))
+subset(stan_df, com_id==lab) %>% ggplot(aes(x=time, y=logrel, col=condition)) +
+  geom_point() +
+  geom_line(aes(group=condition), data=fit_df) +
+  scale_color_manual(name="", values=cb_palette_4[c(1,2)]) +
+  theme(axis.line=element_line(linewidth=unit(0.1, "pt")),
+        legend.position="top", legend.box="vertical",
+        legend.margin=margin(t=-0.15, b=-0.15, unit="cm"),
+        legend.key.width=unit(0.3,"cm"),legend.key.height=unit(0.3,"cm"),
+        strip.background = element_rect(fill=NA, size=0.5), panel.spacing = unit(0, "lines"),
+        panel.grid=element_blank(), axis.text=element_text(color = "black"))
 ```

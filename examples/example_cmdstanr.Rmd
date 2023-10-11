@@ -17,18 +17,17 @@ load R packages
 
 ```{r}
 library(ggplot2)
-library(ggpubr)
 library(viridis)
-library(ggrastr)
 
 library(tidyverse)
 library(data.table)
 
 library(cmdstanr)
 library(bayesplot)
-library(posterior)
 
-devtools::load_all("~/RNA-seq/proQ/RIF-seq_repo")
+source("../R/convert_cmdstan.R")
+source("../R/utils.R")
+source("../R/norm_fun.R")
 
 theme_set(theme_bw(base_size = 10))
 ```
@@ -165,7 +164,7 @@ data_list <- list(
 )
 ```
 
-Run cmdstan. Alternatively, data can be exported with stan_rdump
+Run cmdstan and save fit results. Alternatively, data can be exported with stan_rdump
 
 ```{r}
 stan_file <- paste0(getwd(), "/../stan_models/LNM-1.0.stan")
@@ -247,10 +246,54 @@ rownames(proQ_reads)[diff]
 meta_data %>% subset(locus_tag %in% rownames(proQ_reads)[diff])
 ```
 
-Plot decay rates
+Extract parameters of interest and plot decay curves
+
 ```{r}
 list_param <- fit0$draws(format="matrix") %>% as.data.frame() %>% extract_params()
 list_param$locus_tag <- rownames(proQ_reads)
 list_param$com_id <- meta_data$com_id[match(list_param$locus_tag, meta_data$locus_tag)]
-plot_genes(res_dir, subset(stan_df, com_id %in% c("ileS", "yaaJ")), subset(list_param, com_id %in% c("ileS", "yaaJ")), model_id="LNM", addNorm = F, addDect = F, show.int=F, col=cb_palette_4[c(1,2)])
+```
+
+```{r}
+lab <- "ileS"
+ig <- which(list_param$com_id==lab)
+t <- (0:240)/10
+fit_df <- data.frame(
+  time=c(t,t),
+  logrel=c(
+    sapply(t, function(x) calc_mu(list_param$pib_WT[ig], list_param$beta_WT[ig], list_param$gamma[ig], x, "LNM")),
+    sapply(t, function(x) calc_mu(list_param$pib_1[ig], list_param$beta_1[ig], list_param$gamma[ig], x, "LNM"))),
+  condition=rep(c("WT", "dproQ"), each=length(t)))
+subset(stan_df, com_id==lab) %>% ggplot(aes(x=time, y=logrel, col=condition)) +
+  geom_point() +
+  geom_line(aes(group=condition), data=fit_df) +
+  scale_color_manual(name="", values=cb_palette_4[c(1,2)]) +
+  theme(axis.line=element_line(linewidth=unit(0.1, "pt")),
+        legend.position="top", legend.box="vertical",
+        legend.margin=margin(t=-0.15, b=-0.15, unit="cm"),
+        legend.key.width=unit(0.3,"cm"),legend.key.height=unit(0.3,"cm"),
+        strip.background = element_rect(fill=NA, size=0.5), panel.spacing = unit(0, "lines"),
+        panel.grid=element_blank(), axis.text=element_text(color = "black"))
+```
+
+```{r}
+lab <- "yaaJ"
+ig <- which(list_param$com_id==lab)
+t <- (0:240)/10
+fit_df <- data.frame(
+  time=c(t,t),
+  logrel=c(
+    sapply(t, function(x) calc_mu(list_param$pib_WT[ig], list_param$beta_WT[ig], list_param$gamma[ig], x, "LNM")),
+    sapply(t, function(x) calc_mu(list_param$pib_1[ig], list_param$beta_1[ig], list_param$gamma[ig], x, "LNM"))),
+  condition=rep(c("WT", "dproQ"), each=length(t)))
+subset(stan_df, com_id==lab) %>% ggplot(aes(x=time, y=logrel, col=condition)) +
+  geom_point() +
+  geom_line(aes(group=condition), data=fit_df) +
+  scale_color_manual(name="", values=cb_palette_4[c(1,2)]) +
+  theme(axis.line=element_line(linewidth=unit(0.1, "pt")),
+        legend.position="top", legend.box="vertical",
+        legend.margin=margin(t=-0.15, b=-0.15, unit="cm"),
+        legend.key.width=unit(0.3,"cm"),legend.key.height=unit(0.3,"cm"),
+        strip.background = element_rect(fill=NA, size=0.5), panel.spacing = unit(0, "lines"),
+        panel.grid=element_blank(), axis.text=element_text(color = "black"))
 ```

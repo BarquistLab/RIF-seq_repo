@@ -14,7 +14,7 @@ wgk <- function(Ygk,Nk){
 #' ERCC spike-ins are not expected to have large log-fold changes, therefore
 #' trimM and trimA are set to zero
 #' @export
-normTMM <- function(ercc_reads, N, trimM=0, trimA=0){
+normTMM <- function(ercc_reads, N, trimM=0.3, trimA=0.05){
 
   trimmed_ercc <- subset(ercc_reads, apply(ercc_reads,1,function(x) all(x!=0)))
 
