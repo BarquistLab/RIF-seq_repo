@@ -253,16 +253,6 @@ rownames(proQ_reads)[diff]
 meta_data %>% subset(locus_tag %in% rownames(proQ_reads)[diff])
 ```
 
-Plot decay rates
-
-```{r}
-# The functions used here are all highly customized. It is also straight forward to work directly with the draws from the Stan fit.
-list_param <- fit0$draws(format="matrix") %>% as.data.frame() %>% extract_params()
-list_param$locus_tag <- rownames(proQ_reads)
-list_param$com_id <- meta_data$com_id[match(list_param$locus_tag, meta_data$locus_tag)]
-plot_genes(res_dir, subset(stan_df, com_id %in% c("ileS", "yaaJ")), subset(list_param, com_id %in% c("ileS", "yaaJ")), model_id="LNM", addNorm = F, addDect = F, show.int=F, col=cb_palette_4[c(1,2)])
-```
-
 Fit log-normal model with count-dependent variance
 
 ```{r}
@@ -279,14 +269,6 @@ fit_cdv <- mod$sample(data = json_file, chains = 2, adapt_delta = 0.95, parallel
 fit_cdv$save_object(file = paste0(res_dir, "fit_LNMcdv.RDS"))
 rm(fit_cdv)
 cpu_time_LNMcdv <- system.time(mod$sample(data = json_file, chains = 2, adapt_delta = 0.95, parallel_chains = 2, iter_warmup = 500, iter_sampling = 500, max_treedepth = 12))
-```
-
-```{r}
-fit_cdv <- readRDS(paste0(res_dir, "fit_LNMcdv.RDS"))
-list_param_cdv <- fit_cdv$draws(format="matrix") %>% as.data.frame() %>% extract_params()
-list_param_cdv$locus_tag <- rownames(proQ_reads)
-list_param_cdv$com_id <- meta_data$com_id[match(list_param_cdv$locus_tag, meta_data$locus_tag)]
-plot_genes(res_dir, subset(stan_df, com_id %in% c("ileS", "yaaJ")), subset(list_param, com_id %in% c("ileS", "yaaJ")), model_id="LNMcdv", addNorm = F, addDect = F, show.int=F, col=cb_palette_4[c(1,2)])
 ```
 
 Compare calculated variance and the variation unexplained by the model in the LNM and LNMcdv

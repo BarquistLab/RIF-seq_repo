@@ -2,7 +2,8 @@
 % Please edit documentation in R/convert_cmdstan.R
 \name{extract_params_g0}
 \alias{extract_params_g0}
-\title{Extract results from cmdstanr (LNM-1.0 with gamma=0) and return data.frame with the parameters which are relevant for downstream analysis}
+\title{Extract results from cmdstanr (LNM-1.0 with gamma=0) and return data.frame with the parameters which are relevant for downstream analysis
+Adapted routine for a statistical model where gamma is 0, the corresponding statistical model is not part of this repository.}
 \usage{
 extract_params_g0(
   param_df,
@@ -16,4 +17,5 @@ extract_params_g0(
 }
 \description{
 Extract results from cmdstanr (LNM-1.0 with gamma=0) and return data.frame with the parameters which are relevant for downstream analysis
+Adapted routine for a statistical model where gamma is 0, the corresponding statistical model is not part of this repository.
 }
