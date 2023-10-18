@@ -51,7 +51,6 @@ rownames(meta_data) <- meta_data$locus_tag
 
 ```{r}
 read_counts_in <- fread(paste0(data_dir, "proQ_RIF-seq_1-50.csv"), data.table=F)
-colnames(read_counts_in)[1] <- "locus_tag"
 
 # remove ProQ++ samples for example run
 read_counts_in <- read_counts_in[,-grep("proQp", colnames(read_counts_in))]
