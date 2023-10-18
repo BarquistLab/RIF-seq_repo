@@ -81,8 +81,11 @@ extract_params <- function(param_df, sig=5e-2, nThread=1, delta_thr=2e-2, pi_thr
 	  ic <- ic+1
 	}
 	data_sigma <- data.frame(sigma_fit[2, 1:N_g], row.names=1:N_g)
-	for (it in 2:N_t) {
-	  data_sigma <- cbind(data_sigma, data.frame(sigma_fit[2, ((it-1)*N_g+1):(it*N_g)]))
+	N_t <- (ncol(sigma_fit)/N_g)
+	if(N_t > 1) {
+	  for (it in 2:N_t) {
+	    data_sigma <- cbind(data_sigma, data.frame(sigma_fit[2, ((it-1)*N_g+1):(it*N_g)]))
+	  }
 	}
 	colnames(data_sigma) <- paste("sigma_g", 1:N_t, sep="")
 	param_fit <- cbind(param_fit, data_sigma)
