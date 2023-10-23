@@ -50,13 +50,13 @@ scientific_10 <- function(x) {
 calc_mu <- function(pib, beta, gamma, time, model_id) {
   
   mu <- 0
-  if (grepl("LNM", model_id)) {
+  if (grepl("LNM", model_id) & time > gamma) {
     mu <- log( pib + (1 - pib) * exp(-beta*(time - gamma)) )
-  } else if (model_id=="NB") {
+  } else if (model_id=="NB" & time > gamma) {
     mu <- log( pib + (1 - pib) * exp(-beta*(time - gamma)) )
-  } else if (model_id=="PLM") {
+  } else if (model_id=="PLM" & time > gamma) {
     mu <- -beta*(time - gamma)
-  } else {
+  } else if (model_id=="LM") {
     mu <- -beta*time
   }
   return(mu)

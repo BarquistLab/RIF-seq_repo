@@ -1,11 +1,13 @@
 ---
-title: "Statistical model for scRNA-seq"
+title: "Working example for RIF-seq analysis workflow"
 author: "Laura Jenniches"
-date: "10/8/2020"
+date: "23/10/2023"
 output:
   pdf_document: default
   html_document: default
 ---
+
+Warning: This example workflow was only tested using Linux (Ubuntu). If you encounter any problems with the installation of cmdstan or cmdstanr, please use the example workflow using cmdstan directly (example_cmdstan.Rmd).
 
 #
 ```{r}
@@ -163,9 +165,12 @@ data_list <- list(
 )
 ```
 
-Run cmdstan and save fit results. Alternatively, data can be exported with stan_rdump
+Run cmdstan and save fit results. Alternatively, data can be exported with stan_rdump (see example_cmdstan.Rmd).
+Make sure cmdstan is installed: https://mc-stan.org/cmdstanr/articles/cmdstanr.html
 
 ```{r}
+# check_cmdstan_toolchain()
+# install_cmdstan(cores = 2)
 stan_file <- paste0(getwd(), "/../stan_models/LNM-1.0.stan")
 mod <- cmdstan_model(stan_file, pedantic=F)
 
@@ -254,7 +259,7 @@ list_param$com_id <- meta_data$com_id[match(list_param$locus_tag, meta_data$locu
 ```
 
 ```{r}
-lab <- "ileS"
+lab <- "yaeH"
 ig <- which(list_param$com_id==lab)
 t <- (0:240)/10
 fit_df <- data.frame(
@@ -276,7 +281,7 @@ subset(stan_df, com_id==lab) %>% ggplot(aes(x=time, y=logrel, col=condition)) +
 ```
 
 ```{r}
-lab <- "yaaJ"
+lab <- "yadS"
 ig <- which(list_param$com_id==lab)
 t <- (0:240)/10
 fit_df <- data.frame(
