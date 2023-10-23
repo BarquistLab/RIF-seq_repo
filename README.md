@@ -24,10 +24,12 @@ Here, we provide useful links regarding installing and running Stan models, in a
 
 ## Installing and running the Stan model LNM.stan
 
-The Stan models can be run using various interfaces. Depeding on the size of the analyzed dataset, fitting the parameters can take several days even with multithreading. It is therefore recommended to use cmdstan (example workflow in *example_cmdstan.Rmd*): https://mc-stan.org/docs/2_31/cmdstan-guide/cmdstan-installation.html
+The Stan models can be run using various interfaces. Depending on the size of the analyzed dataset, fitting the parameters can take several days even with multithreading. It is therefore recommended to use **cmdstan** (example workflow in *example_cmdstan.Rmd*): https://mc-stan.org/docs/2_31/cmdstan-guide/cmdstan-installation.html
 
-Alternatively, smaller (test) data sets can be analyzed using cmdstanr. This requires the installation of the the R package cmdstanr **and** the installation of cmdstan. An installation guide can be found here (example workflow in *example_cmdstanr.Rmd*):
+Alternatively, smaller (test) data sets can be analyzed using **cmdstanr**. This requires the installation of the the R package cmdstanr **and** the installation of cmdstan. An installation guide can be found here (example workflow in *example_cmdstanr.Rmd*):
 https://mc-stan.org/cmdstanr/
+and explanations on how to install cmdstan and get started with cmdstanr are provided here:
+https://mc-stan.org/cmdstanr/articles/cmdstanr.html
 
 > **Note**
 > 
@@ -42,7 +44,7 @@ After creating a RIF-seq_data.R file, the decay rates can be fitted with ``` ./L
 <div class="columns-2">
   
   - **CRAN** knitr, data.table, tidyverse, ggplot2, bayesplot
-  - **github** cmdstanr (only required for workflow cmdstanr)
+  - **github** cmdstanr (only required for workflow with cmdstanr)
 </div>
 
 Running the model comparison script requires installing additional packages (see the file "DESCRIPTION" for a list).
