@@ -31,6 +31,7 @@ library(posterior)
 source("../R/convert_cmdstan.R")
 source("../R/utils.R")
 source("../R/norm_fun.R")
+source("../R/diagnose_stan.R")
 
 theme_set(theme_bw(base_size = 10))
 ```
@@ -192,7 +193,7 @@ list_param$com_id <- meta_data$com_id[match(list_param$locus_tag, meta_data$locu
 ```
 
 ```{r}
-lab <- "ileS"
+lab <- "yaeH"
 ig <- which(list_param$com_id==lab)
 t <- (0:240)/10
 fit_df <- data.frame(
@@ -214,7 +215,7 @@ subset(stan_df, com_id==lab) %>% ggplot(aes(x=time, y=logrel, col=condition)) +
 ```
 
 ```{r}
-lab <- "yaaJ"
+lab <- "yadS"
 ig <- which(list_param$com_id==lab)
 t <- (0:240)/10
 fit_df <- data.frame(
