@@ -31,4 +31,7 @@ stan_models/LNM_loo-1.0
 stan_models/LNMcdv-1.0
 stan_models/LNMcdv_loo-1.0
 stan_models/LNMsim
+# everything related to the horseshoe prior
+examples/examples_horseshoe.Rmd
+stan_models/LNM_horseshoe*
 

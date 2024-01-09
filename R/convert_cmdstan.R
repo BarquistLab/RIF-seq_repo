@@ -5,7 +5,7 @@ extract_params <- function(param_df, sig=5e-2, nThread=1, delta_thr=2e-2, pi_thr
   sigm1 <- 1 - sig
   	
   beta_WT <- param_df[,grep("beta_WT", colnames(param_df))]
-  delta_beta <- param_df[,grep("delta_beta", colnames(param_df))]
+  delta_beta <- param_df[,grep("delta_beta[\\.|\\[]", colnames(param_df))]
 	gamma_fit <- param_df[,grep("^gamma", colnames(param_df))] %>% apply(2,function(x) quantile(x, probs=c(sig,0.5,sigm1)))
 	# required for 68% interval
 	gamma_fit_sd <- param_df[,grep("^gamma", colnames(param_df))] %>% apply(2,function(x) quantile(x, probs=c(0.16,0.5,0.84)))

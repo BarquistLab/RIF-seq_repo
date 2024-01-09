@@ -1,6 +1,79 @@
-# RIF-seq_repo
+# RNA Decay Analysis with Stan
 
-This repository contains Stan models for the analysis of RNA decay in bacteria which have been treated with the transcription initiation inhibitor rifampicin followed by sequencing (RIF-seq) which were used to extract RNA decay parameters in [^f1]. It was shown that models based on log-counts can be used to describe RNA-seq data when the mean-variance relationship is modeled [^f2]. Because of computational efficiency, all models in this repository are based on log-counts rather than raw counts. The Stan models are in the directory *stan_models*. The directory *R* contains some R functions which may be helpful for the downstream analysis, but which are not required for running the Stan models. An example on how to run the Stan model with cmdstanr can be found the *examples* directory. The required data files are provided in *data*. Furthermore, a log-normal model (LNM) with and without modeling the mean-variance relationship are compared in *model_comparison.Rmd* including using Baysian model comparison techniques like leave-one-out cross validation (LOO-CV)[^f3] and posterior predictive checks [^f4]. Alternatively, the data can be exported using ``stan_rdump``` as described below and run with cmdstan, the command line version of Stan (or with PyStan).
+Welcome to the RNA Decay Analysis repository! This collection of Stan models is designed for studying RNA decay in bacteria treated with the transcription initiation inhibitor rifampicin, followed by sequencing (RIF-seq). These models, discussed in detail in [^f1], aim to extract essential RNA decay parameters. Our approach is based on log-counts rather than raw counts, as it has been demonstrated that log-count models effectively describe RNA-seq data when accounting for the mean-variance relationship [^f2].
+
+## Directory Structure:
+
+<div class="columns-2">
+  
+  - **stan_models:** This directory contains all Stan models.
+  - **R:** The R directory houses helpful R functions. While not mandatory for running Stan models, these functions can enhance downstream analysis.
+  - **examples:** Discover examples illustrating how to run the Stan models using cmdstanr/cmdstan. Clear instructions and sample data are provided.
+  - **data:** Essential data files required for running the example workflows are conveniently stored here.
+  - **annotations:** This directory contains the annotations used for the analysis of RNA decay rates in *Salmonella* [^f1].
+
+</div>
+
+# Getting Started
+
+## Installing and running the Stan models
+
+To run the Stan models, various interfaces are available. The choice of interface depends on the dataset size, as fitting parameters might take several days, even with multithreading. For optimal performance, we recommend using cmdstan with a (detailed example workflow provided in *example_cmdstan.Rmd*)
+
+### Using cmdstan
+
+1. Install cmdstan
+Follow the comprehensive guide https://mc-stan.org/docs/2_31/cmdstan-guide/cmdstan-installation.html
+
+2. Enable multithreading
+The Stan models use the function ```reduce_sum```. To enhance computation speed, enable multithreading following the guide https://mc-stan.org/docs/2_31/cmdstan-guide/parallelization.html .
+
+3. Compile the Stan model
+After installing cmdstan, create a directory for the Stan model within the cmdstan directory. To compile the model, follow the instructions here: https://mc-stan.org/docs/2_31/cmdstan-guide/compiling-a-stan-program.html .
+
+4. Fitting the Stan model
+Below, we explain how to export the sequencing data to the R dump file RIF-seq_data.R. After formatting the data, fit the decay rates using the following command
+
+```
+./LNM sample data file=RIF-seq_data.R
+```
+
+Refer to the cmdstan instructions: https://mc-stan.org/docs/2_31/cmdstan-guide/mcmc-intro.html. The models have been tested with 1000 warmup iterations and 1000 sampling iterations.
+
+### Using cmdstanr
+
+For smaller (test) datasets, consider using **cmdstanr**. Install the R package cmdstanr **and** cmdstan following the installation guide (example workflow in *example_cmdstanr.Rmd*):
+https://mc-stan.org/cmdstanr/
+Explanations on how to install cmdstan and get started with cmdstanr are provided here:
+https://mc-stan.org/cmdstanr/articles/cmdstanr.html
+
+
+
+## Example workflows
+
+Get started with Bayesian modeling with our three comprehensive example workflows, each providing a step-by-step example of a Bayesian analysis workflow of RNA decay in rifampicin-treated bacteria.
+
+### Prerequisites
+
+Before running the examples, ensure you have the necessary R packges installed.
+
+<div class="columns-2">
+  
+  - **CRAN** knitr, data.table, tidyverse, ggplot2, bayesplot
+  - **github** cmdstanr (only required for workflow with cmdstanr): https://mc-stan.org/cmdstanr/
+</div>
+
+For additional packages required for the model comparison script, consult the "DESCRIPTION" file in the repository.
+
+### List of workflows
+
+<div class="columns-2">
+  
+  - **example_cmdstan.Rmd** Normalize and prepare RIF-seq read counts for 50 genes, 3 replicates of WT *Salmonella* and a ProQ deletion strain. Export the data to the format required by the command-line version of Stan, **cmdstan**. Fit the Stan model separately using cmdstan. Copy the cmdstan output file to the *data* directory before running Bayesian diagnostics and plotting the fit results.
+   - **example_cmdstanr.Rmd** Similar to *example_cmdstanr.Rmd*, this workflow employs the R package cmdstanr. Find instructions on installing cmdstanr [here](https://mc-stan.org/cmdstanr/) and in the example script. If cmdstanr has not been used previously, run ```check_cmdstan_toolchain``` and ```install_cmdstan``` before fitting the Stan model.
+   - **model_comparison.Rmd** This example extends the cmdstanr workflow, fitting both the log-normal model (LNM) as well as the LNM with count-dependent variance (LNMcdv). Use the Stan model files which calculate the pointwise log-likelihood ```log_lik``` and saves a random draw from the log-normal distribution ```y_rep```. These quantities are essential for the Bayesian model comparison techniques leave-one-out cross validation (LOO-CV)[^f3] and posterior predictive checks[^f4]. After fitting the models, explore model comparisons with LOO-CV, posterior predictive checking, and correlation coefficients. Observe how the width of the log-normal distribution (the variation unexplained by the model) behaves across different models. The initial run requires fitting the models and saving them as RDS files for efficient reuse. If you are not interested in comparing cpu times, you can skip this part.
+  
+ </div>
 
 ## Stan models
 
@@ -20,34 +93,7 @@ The directory *stan_models* contains Stan model files to analyze RIF-seq data:
 </div>
 If you have questions on how to adapt the statistical models to your sequencing data or if you are interested in using count-based models, please contact the authors directly.
 
-Here, we provide useful links regarding installing and running Stan models, in addition to instructions on how to prepare the data with **R** before running LNM.stan with cmdstan. For an example with cmdstanr, we have included *example_cmdstanr.Rmd* in the *examples* directory.
-
-## Installing and running the Stan model LNM.stan
-
-The Stan models can be run using various interfaces. Depending on the size of the analyzed dataset, fitting the parameters can take several days even with multithreading. It is therefore recommended to use **cmdstan** (example workflow in *example_cmdstan.Rmd*): https://mc-stan.org/docs/2_31/cmdstan-guide/cmdstan-installation.html
-
-Alternatively, smaller (test) data sets can be analyzed using **cmdstanr**. This requires the installation of the the R package cmdstanr **and** the installation of cmdstan. An installation guide can be found here (example workflow in *example_cmdstanr.Rmd*):
-https://mc-stan.org/cmdstanr/
-and explanations on how to install cmdstan and get started with cmdstanr are provided here:
-https://mc-stan.org/cmdstanr/articles/cmdstanr.html
-
-> **Note**
-> 
-> The Stan models use the function ```reduce_sum```. To reduce computation time, multithreading should be enabled following the guide https://mc-stan.org/docs/2_31/cmdstan-guide/parallelization.html .
-
-After installing cmdstan, a directory for the Stan model can be created within the cmdstan directory and the Stan model can be installed following the cmdstan instructions: https://mc-stan.org/docs/2_31/cmdstan-guide/compiling-a-stan-program.html .
-
-After creating a RIF-seq_data.R file, the decay rates can be fitted with ``` ./LNM sample data file=RIF-seq_data.R``` following the cmdstan instructions: https://mc-stan.org/docs/2_31/cmdstan-guide/mcmc-intro.html. The model was tested using 1000 warmup iterations and 1000 sampling iterations.
-
-## Required R packages for workflow with cmdstan/cmdstanr
-
-<div class="columns-2">
-  
-  - **CRAN** knitr, data.table, tidyverse, ggplot2, bayesplot
-  - **github** cmdstanr (only required for workflow with cmdstanr): https://mc-stan.org/cmdstanr/
-</div>
-
-Running the model comparison script requires installing additional packages (see the file "DESCRIPTION" for a list).
+Here, we provide useful links and examples regarding installing and running Stan models, in addition to instructions on how to prepare the data with **R** before running LNM.stan with cmdstan. For an example with cmdstanr, we have included *example_cmdstanr.Rmd* in the *examples* directory.
 
 ## Exporting the read counts and metadata to cmdstan format with R
 
