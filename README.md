@@ -81,23 +81,21 @@ For additional packages required for the model comparison script, consult the "D
 
 ## Stan models
 
-Stan is a probabilistic programming language. Extensive documentation on how to develop and run Stan models can be found on the Stan website: https://mc-stan.org/ . The implementation of Stan models is very efficient, because Stan separates the model implementation from the sampling process.
+Stan is a probabilistic programming language. Find extensive documentation on how to develop and run Stan models on the Stan website: https://mc-stan.org/ . The implementation of Stan models is very efficient, because Stan separates model implementation from the sampling process.
 
 The directory *stan_models* contains Stan model files to analyze RIF-seq data:
 
 <div class="columns-2">
   
-  - **LNM-1.0.stan** This Stan file contains a log-normal model (LNM) which fits RNA decay curves of rifampicin treated bacteria. Its parameters have been described in [^f1]. It is compatible with Stan (>=2.26). Since it is based on normalized log-counts, it is suitable for sequencing experiments with similar library sizes. If the library sizes are very different, we recommend using LNMcdv-1.0.stan, which models the variance-mean relationship.
-  - **LNMcdv-1.0.stan** In this Stan model, the variance depends on the raw sequencing counts. It is therefore suitable for sequencing experiments with large differences in library size, while it is still computationally more efficient than a count-based (negative binomial) model. In *model_comparison.Rmd*, the LNM with and without mean-variance modeling are compared.
-  - **LNM_loo-1.0.stan** Same as LNM-1.0.stan, but the quantities requried for LOO-CV and posterior predictive checks are computed in the generated quantities block. This makes the model computationally less efficient. Therefore, it should only be used for model comparison.
-  - **LNMcdv_loo-1.0.stan** Same as LNMcdv-1.0.stan, but the quantities requried for LOO-CV and posterior predictive checks are computed in the generated quantities block. This makes the model computationally less efficient. Therefore, it should only be used for model comparison.
-  - **LNM.stan** This is the original model used to extract RNA decay rates in [^f1]. It is compatible and tested with Stan 2.28 - 2.31. Starting from Stan 2.32, the old syntax of array definitions will no longer work https://mc-stan.org/docs/2_29/reference-manual/brackets-array-syntax.html . We recommend using LNM-1.0.stan instead, where the array definitions have been updated to the new syntax (Stan >=2.26).
+  - **LNM-1.0.stan** A log-normal model (LNM) which fits RNA decay curves of rifampicin treated bacteria. Its parameters have been described in [^f1]. It is compatible with Stan (>=2.26). Since it is based on normalized log-counts, it is suitable for sequencing experiments with similar library sizes. If the library sizes are very different, we recommend using LNMcdv-1.0.stan, which models the variance-mean relationship.
+  - **LNMcdv-1.0.stan** Similar to the LNM, the variance depends on the raw sequencing counts in this model. Its use is recommanded for sequencing experiments with large differences in library size. Computationally, it is more efficient than a count-based (negative binomial) model. Run the example *model_comparison.Rmd*, to compare the LNM with and without mean-variance modeling.
+  - **LNM_loo-1.0.stan** Same as LNM-1.0.stan, but the quantities requried for LOO-CV and posterior predictive checks are computed in the generated quantities block. This makes the model computationally less efficient. Therefore, it should only be used for model comparison purposes.
+  - **LNMcdv_loo-1.0.stan** Same as LNMcdv-1.0.stan, but the quantities requried for LOO-CV and posterior predictive checks are computed in the generated quantities block. This makes the model computationally less efficient. Therefore, it should only be used for model comparison purposes.
+  - **LNM.stan** This is the original model used to extract RNA decay rates in [^f1]. It is compatible and tested with Stan 2.28 - 2.31. Starting from Stan 2.32, the old syntax of array definitions is no longer suported https://mc-stan.org/docs/2_29/reference-manual/brackets-array-syntax.html . We recommend using LNM-1.0.stan instead, where the array definitions have been updated to the new syntax (Stan >=2.26).
   - **LNMsim.stan** simulates RNA decay curves for multiple experimental conditions or bacterial strains (Stan <=2.31).
 
 </div>
 If you have questions on how to adapt the statistical models to your sequencing data or if you are interested in using count-based models, please contact the authors directly.
-
-Here, we provide useful links and examples regarding installing and running Stan models, in addition to instructions on how to prepare the data with **R** before running LNM.stan with cmdstan. For an example with cmdstanr, we have included *example_cmdstanr.Rmd* in the *examples* directory.
 
 ## Exporting the read counts and metadata to cmdstan format with R
 
