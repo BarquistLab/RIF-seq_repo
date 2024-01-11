@@ -18,7 +18,7 @@ Welcome to the RNA Decay Analysis repository! This collection of Stan models is 
 
 ## Installing and running the Stan models
 
-To run the Stan models, various interfaces are available. The choice of interface depends on the dataset size, as fitting parameters might take several days, even with multithreading. For optimal performance, we recommend using cmdstan with a (detailed example workflow provided in *example_cmdstan.Rmd*)
+To run the Stan models, various interfaces are available. The choice of interface depends on the dataset size, as fitting parameters might take several days, even with multithreading. For optimal performance, we recommend using the command-line interface of Stan, **cmdstan** (detailed example workflow provided in *example_cmdstan.Rmd*). Alternatives are the R interface cmdstanr and the Python interace PyStan.
 
 ### Using cmdstan
 
