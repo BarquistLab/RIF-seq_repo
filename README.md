@@ -22,16 +22,20 @@ To run the Stan models, various interfaces are available. The choice of interfac
 
 ### Using cmdstan
 
-1. Install cmdstan
+1. **Install cmdstan**
+
 Follow the comprehensive guide https://mc-stan.org/docs/2_31/cmdstan-guide/cmdstan-installation.html
 
-2. Enable multithreading
+2. **Enable multithreading**
+
 The Stan models use the function ```reduce_sum```. To enhance computation speed, enable multithreading following the guide https://mc-stan.org/docs/2_31/cmdstan-guide/parallelization.html .
 
-3. Compile the Stan model
+3. **Compile the Stan model**
+
 After installing cmdstan, create a directory for the Stan model within the cmdstan directory. To compile the model, follow the instructions here: https://mc-stan.org/docs/2_31/cmdstan-guide/compiling-a-stan-program.html .
 
-4. Fitting the Stan model
+4. **Fitting the Stan model**
+
 Below, we explain how to export the sequencing data to the R dump file RIF-seq_data.R. After formatting the data, fit the decay rates using the following command
 
 ```
