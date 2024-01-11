@@ -99,7 +99,7 @@ If you have questions on how to adapt the statistical models to your sequencing 
 
 ## Exporting the read counts and metadata to cmdstan format with R
 
-The read counts and metadata can be exported for cmdstan using the rstan function ```stan_rdump```. The following quantities are required:
+Export read counts and metadata for cmdstan using the rstan function ```stan_rdump```. The following quantities are required:
 
 <div class="columns-2">
   
@@ -111,7 +111,7 @@ The read counts and metadata can be exported for cmdstan using the rstan functio
   - ```N_g``` Number of genetic features.
 </div>
 
-Then, the read counts and metadata should be organized in a long data frame ```stan_df``` with the following columns:
+Organize the read counts and metadata in a long data frame ```stan_df``` with the following columns:
 
 <div class="columns-2">
   
@@ -125,11 +125,11 @@ Then, the read counts and metadata should be organized in a long data frame ```s
 
 Furthermore, ```N_s``` normalization factors ```n_f``` (e.g. calculated from ERCC spike-ins) and RNA-seq library sizes ```N_lib``` (total number of reads per sample) are required.
 
-The data is then exported via ```stan_rdump``` (see *example_cmdstan.Rmd* for a working example):
+Export the data via ```stan_rdump``` (see *example_cmdstan.Rmd* for a working example):
 
 ```
 # Define iterators required by the Stan models
-# condition, sample and locus_tag are expected to be factors, replicate and time numeric.
+# condition, sample and locus_tag have to be factors, replicate and time numeric.
 it_c = stan_df$condition %>% as.numeric
 it_b = stan_df$replicate
 it_s = stan_df$sample %>% as.numeric
@@ -181,17 +181,17 @@ rstan::stan_rdump(c("raw", "t", "N_lib", "n_f", "batch_effects", "model_id"), fi
 rstan::stan_rdump(c("it_g", "it_gc", "it_gct", "it_gt", "it_t", "it_s", "it_b", "it_c"), file="RIF-seq_data.R", append=T)
 ```
 
-As explained in [^f1], we recommend using the log-normal model for the analysis of RIF-seq data, because it accounts for the delay because of ongoing transcription as well as for a finite baseline concentration of stable RNA which can be observed in RIF-seq data.
+As explained in [^f1], we recommend using the log-normal model for the analysis of RIF-seq data, because it accounts for common confounding factors of rifampicin treated bacteria. It includes the delay because of ongoing transcription as well as a finite baseline concentration of stable RNA observable in RIF-seq data.
 
 ## Importing the cmdstan results with R
 
-cmdstan saves the results from the HMC sampler in a csv file, e.g. RIF-seq_results.csv. Since the csv files can be quite large, it is recommended to import them using ```fread```, e.g.
+cmdstan saves the results from the HMC sampler in a csv file, e.g. RIF-seq_results.csv. Since the csv files can be quite large, import them using ```fread```, e.g.
 
 ```
 stan_samples <- fread(cmd = 'grep -v "#" RIF-seq_results.csv', data.table = F)
 ```
 
-The WT (control) decay rates of gene ```it_g``` are saved in ```betas.1.it_g``` (LNM) or ```beta_WT.it_g``` (LNM-1.0, LNMcdv-1.0), the differences in decay rate for condition/strain ```it_c``` are saved in ```betas.it_c.it_g``` (LNM) or ```delta_beta.(it_c-1).it_g``` (LNM-1.0, LNMcdv-1.0). Then, the medians and quantiles can be obtained from the data frame ```stan_samples``` as follows:
+The WT (control) decay rates of gene ```it_g``` are saved in ```betas.1.it_g``` (LNM) or ```beta_WT.it_g``` (LNM-1.0, LNMcdv-1.0), the differences in decay rate for condition/strain ```it_c``` are saved in ```betas.it_c.it_g``` (LNM) or ```delta_beta.(it_c-1).it_g``` (LNM-1.0, LNMcdv-1.0). Calculate medians and quantiles from the data frame ```stan_samples``` as follows:
 
 ```
 beta_WT <- stan_samples[,grep("^betas\\.1\\.", colnames(stan_samples)] %>% apply(2, function(x) quantile(x, probs=c(0.05, 0.5, 0.95))
@@ -199,11 +199,11 @@ beta_WT <- stan_samples[,grep("^betas\\.1\\.", colnames(stan_samples)] %>% apply
 
 > **Note**
 > 
-> If the files are too large to import them with fread, the columns containing the relevant parameters can be extracted from the csv file using command line tools.
+> If the files are too large to import them with fread, extract the columns containing the relevant parameters using command line tools.
 
 ## Simulating decay curves
 
-The RIF-seq_data.R file can also be used to simulate decay curves with the same number of replicates/samples/conditions/genes. Alternatively, one can create a RIF-seq_sim_data.R file containing only the required information following the same steps as for the RIF-seq_data.R file, omitting the variables ```raw, N_lib, n_f, batch_effects, model_id```.
+Use the RIF-seq_data.R file to simulate decay curves with the same number of replicates/samples/conditions/genes as your real data. Alternatively, create a RIF-seq_sim_data.R file containing only the required information following the same steps as for the RIF-seq_data.R file, omitting the variables ```raw, N_lib, n_f, batch_effects, model_id```.
 
 ```
 rstan::stan_rdump(c("N_con", "N_s", "N_b", "N_t", "N_g", "N_tot"), file=RIF-seq_data.R)
