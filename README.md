@@ -24,7 +24,7 @@ To run the Stan models, various interfaces are available. The choice of interfac
 
 1. **Install cmdstan**
 
-Follow the comprehensive guide https://mc-stan.org/docs/2_31/cmdstan-guide/cmdstan-installation.html
+Follow the comprehensive guide https://mc-stan.org/docs/2_31/cmdstan-guide/cmdstan-installation.html . The models have been tested with Stan v2.31.0.
 
 2. **Enable multithreading**
 
